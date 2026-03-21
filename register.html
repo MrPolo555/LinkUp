@@ -1,0 +1,89 @@
+<!-- register.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Регистрация - LinkUp</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container" style="max-width: 400px;">
+        <div class="card">
+            <h2 style="text-align: center; margin-bottom: 20px;">Регистрация</h2>
+            <form id="registerForm">
+                <div class="form-group">
+                    <label>Имя и фамилия</label>
+                    <input type="text" id="fullName" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="email" required>
+                </div>
+                <div class="form-group">
+                    <label>Пароль</label>
+                    <input type="password" id="password" required minlength="6">
+                </div>
+                <div class="form-group">
+                    <label>Подтверждение пароля</label>
+                    <input type="password" id="confirmPassword" required>
+                </div>
+                <div id="errorMessage" class="alert alert-error" style="display: none;"></div>
+                <div id="successMessage" class="alert alert-success" style="display: none;"></div>
+                <button type="submit" class="btn btn-primary btn-block">Зарегистрироваться</button>
+            </form>
+            <p style="text-align: center; margin-top: 20px;">
+                Уже есть аккаунт? <a href="login.html">Войти</a>
+            </p>
+        </div>
+    </div>
+    <script>
+        document.getElementById('registerForm').onsubmit = (e) => {
+            e.preventDefault();
+            const fullName = document.getElementById('fullName').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            
+            if (password !== confirmPassword) {
+                showError('Пароли не совпадают');
+                return;
+            }
+            
+            let users = JSON.parse(localStorage.getItem('users') || '{}');
+            
+            if (users[email]) {
+                showError('Пользователь с таким email уже существует');
+                return;
+            }
+            
+            users[email] = {
+                fullName: fullName,
+                email: email,
+                password: password,
+                friends: [],
+                friendRequests: [],
+                postsCount: 0,
+                createdAt: new Date().toISOString()
+            };
+            
+            localStorage.setItem('users', JSON.stringify(users));
+            
+            const successDiv = document.getElementById('successMessage');
+            successDiv.textContent = 'Регистрация успешна! Перенаправляем...';
+            successDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                window.location.href = 'login.html';
+            }, 2000);
+        };
+        
+        function showError(msg) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = msg;
+            errorDiv.style.display = 'block';
+            setTimeout(() => errorDiv.style.display = 'none', 3000);
+        }
+    </script>
+</body>
+</html>

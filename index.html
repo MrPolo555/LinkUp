@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Лента - LinkUp</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="logo">LinkUp</a>
+            <div class="nav-links">
+                <a href="index.html">Лента</a>
+                <a href="profile.html">Профиль</a>
+                <a href="messages.html">Сообщения</a>
+                <div class="notifications-badge" id="notificationsBtn">
+                    🔔
+                    <span class="notifications-count" id="notificationsCount">0</span>
+                    <div class="notifications-dropdown" id="notificationsDropdown">
+                        <div class="notifications-header">Уведомления</div>
+                        <div class="notifications-list" id="notificationsList">
+                            <div style="padding: 20px; text-align: center; color: #64748b;">Нет уведомлений</div>
+                        </div>
+                    </div>
+                </div>
+                <button id="logoutBtn" class="btn-logout">Выйти</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Блок создания поста с красивой кнопкой -->
+        <div class="card">
+            <h3>Создать пост</h3>
+            <textarea id="postText" rows="3" placeholder="Что у вас нового?" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 12px; font-family: inherit; resize: vertical;"></textarea>
+            
+            <!-- Красивая кнопка выбора фото -->
+            <div style="margin: 15px 0;">
+                <label class="photo-upload-btn" style="display: inline-flex; align-items: center; gap: 10px; background: #f1f5f9; border: 1px dashed #1e40af; padding: 12px 20px; border-radius: 30px; cursor: pointer; transition: all 0.3s;">
+                    📷 <span id="uploadBtnText">Выбрать фото</span>
+                    <input type="file" id="postImage" accept="image/*" style="display: none;">
+                </label>
+                <span id="fileName" style="margin-left: 12px; font-size: 13px; color: #64748b;">Файл не выбран</span>
+            </div>
+            
+            <button id="createPostBtn" class="btn btn-primary" style="width: 100%; margin-top: 5px;">📝 Опубликовать</button>
+        </div>
+
+        <div id="feed"></div>
+    </div>
+
+    <script src="auth.js"></script>
+    <script src="script.js"></script>
+
+    <script>
+    // Меняем текст на кнопке при выборе файла
+    const fileInput = document.getElementById('postImage');
+    const fileNameSpan = document.getElementById('fileName');
+    const uploadBtnText = document.getElementById('uploadBtnText');
+    
+    if (fileInput) {
+        fileInput.addEventListener('change', function() {
+            if (this.files && this.files[0]) {
+                const fileName = this.files[0].name;
+                if (fileNameSpan) fileNameSpan.textContent = fileName;
+                if (uploadBtnText) uploadBtnText.textContent = '📷 Фото выбрано';
+            } else {
+                if (fileNameSpan) fileNameSpan.textContent = 'Файл не выбран';
+                if (uploadBtnText) uploadBtnText.textContent = 'Выбрать фото';
+            }
+        });
+    }
+</script>
+</body>
+</html>
