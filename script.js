@@ -1,1132 +1,997 @@
-import { supabase } from './supabase-config.js'
+var dbClient = window.supabase.createClient(
+    'https://wydmaatvxutxgvxjknhm.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5ZG1hYXR2eHV0eGd2eGprbmhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwOTU1MjAsImV4cCI6MjA4OTY3MTUyMH0.ZhybOVp98GTHDZxjDXJF4IruDoip0Npf8AKcsimNeC4'
+);
 
-// ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
-let currentUser = null
-let currentChatUser = null
-
-// ========== ИНИЦИАЛИЗАЦИЯ ==========
-document.addEventListener('DOMContentLoaded', async () => {
-    // Проверяем авторизацию
-    const { data: { session } } = await supabase.auth.getSession()
-    
-    if (!session && !window.location.pathname.includes('login') && !window.location.pathname.includes('register')) {
-        window.location.href = 'login.html'
-        return
-    }
-    
-    if (session) {
-        // Получаем данные пользователя
-        const { data: userData } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', session.user.email)
-            .single()
-        
-        if (userData) {
-            currentUser = userData
-            localStorage.setItem('currentUser', JSON.stringify(currentUser))
-        }
-    }
-    
-    // Загружаем данные в зависимости от страницы
-    if (window.location.pathname.includes('index.html')) {
-        await loadFeed()
-        setupCreatePost()
-        subscribeToNewPosts()
-    } else if (window.location.pathname.includes('profile.html')) {
-        await loadProfile()
-        await loadUserPosts()
-        setupEditProfile()
-    } else if (window.location.pathname.includes('messages.html')) {
-        await loadMessagesPage()
-        subscribeToNewMessages()
-    }
-    
-    // Инициализация уведомлений
-    updateNotificationsUI()
-    
-    // Кнопка выхода
-    const logoutBtn = document.getElementById('logoutBtn')
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', async () => {
-            await supabase.auth.signOut()
-            localStorage.removeItem('currentUser')
-            window.location.href = 'login.html'
-        })
-    }
-    
-    // Колокольчик уведомлений
-    const notificationsBtn = document.getElementById('notificationsBtn')
-    if (notificationsBtn) {
-        notificationsBtn.addEventListener('click', (e) => {
-            e.stopPropagation()
-            const dropdown = document.getElementById('notificationsDropdown')
-            if (dropdown) dropdown.classList.toggle('show')
-        })
-        
-        document.addEventListener('click', () => {
-            const dropdown = document.getElementById('notificationsDropdown')
-            if (dropdown) dropdown.classList.remove('show')
-        })
-    }
-})
-
-// ========== ПОСТЫ ==========
-function setupCreatePost() {
-    const createBtn = document.getElementById('createPostBtn')
-    if (createBtn) {
-        createBtn.onclick = createPost
-    }
-    
-    const fileInput = document.getElementById('postImage')
-    if (fileInput) {
-        fileInput.addEventListener('change', function() {
-            const fileNameSpan = document.getElementById('fileName')
-            if (fileNameSpan && this.files && this.files[0]) {
-                fileNameSpan.textContent = this.files[0].name
-            } else if (fileNameSpan) {
-                fileNameSpan.textContent = 'Файл не выбран'
-            }
-        })
-    }
+function getUser() {
+    var u = localStorage.getItem('currentUser');
+    return u ? JSON.parse(u) : null;
 }
 
-async function createPost() {
-    const text = document.getElementById('postText')?.value
-    const imageFile = document.getElementById('postImage')?.files[0]
+document.addEventListener('DOMContentLoaded', function() {
+    var user = getUser();
+    if (!user) return;
     
-    if (!text && !imageFile) {
-        alert('Напишите что-нибудь или добавьте фото')
-        return
-    }
-    
-    let imageUrl = ''
-    
-    if (imageFile) {
-        // Загружаем фото в Storage Supabase
-        const fileName = `${Date.now()}_${imageFile.name}`
-        const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('post-images')
-            .upload(fileName, imageFile)
+    if (window.location.pathname.includes('index.html')) {
+        loadFeed();
+        var btn = document.getElementById('createPostBtn');
+        if (btn) btn.onclick = createPost;
+    } else if (window.location.pathname.includes('profile.html')) {
+        var urlParams = new URLSearchParams(window.location.search);
+        var profileUserId = urlParams.get('user');
         
-        if (uploadError) {
-            console.error('Ошибка загрузки фото:', uploadError)
-            alert('Ошибка загрузки фото')
-            return
+        if (profileUserId) {
+            loadOtherProfile(profileUserId);
+        } else {
+            loadProfile();
         }
-        
-        // Получаем публичный URL
-        const { data: urlData } = supabase.storage
-            .from('post-images')
-            .getPublicUrl(fileName)
-        
-        imageUrl = urlData.publicUrl
+        loadUserPosts();
+    }
+});
+
+function renderPostCard(p, userInfo, user, userMap) {
+    var userName = userInfo.full_name;
+    var avatar = userInfo.avatar;
+    var isOwn = p.user_id === user?.id;
+    var isLiked = p.likes && p.likes.includes(user?.id);
+    var likesCount = p.likes ? p.likes.length : 0;
+    var comments = p.comments || [];
+    var isEdited = p.edited || false;
+    
+    var avatarHtml = avatar 
+        ? '<img src="' + avatar + '" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">'
+        : '<div style="width: 40px; height: 40px; background: #1e40af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">' + (userName ? userName.charAt(0).toUpperCase() : 'U') + '</div>';
+    
+    var menuHtml = '';
+    if (isOwn) {
+        menuHtml = `
+            <div style="position: relative;">
+                <button class="post-menu-btn" data-post-id="${p.id}" style="background: none; border: none; cursor: pointer; font-size: 18px; color: #64748b; padding: 4px 8px; border-radius: 8px;">⋮</button>
+                <div class="post-menu-dropdown-${p.id}" style="display: none; position: absolute; right: 0; top: 30px; background: white; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 100; min-width: 130px; overflow: hidden;">
+                    <button class="edit-post-btn" data-post-id="${p.id}" style="width: 100%; padding: 10px 12px; text-align: left; background: none; border: none; cursor: pointer; transition: background 0.2s; border-bottom: 1px solid #e2e8f0;">✏️ Редактировать</button>
+                    <button class="delete-post-btn" data-post-id="${p.id}" style="width: 100%; padding: 10px 12px; text-align: left; background: none; border: none; cursor: pointer; color: #ef4444; transition: background 0.2s;">🗑️ Удалить</button>
+                </div>
+            </div>
+        `;
     }
     
-    // Сохраняем пост в базу
-    const { data, error } = await supabase
-        .from('posts')
-        .insert({
-            user_id: currentUser.id,
-            text: text || '',
-            image: imageUrl,
-            likes: [],
-            reactions: {}
-        })
-        .select()
-        .single()
+    var editedHtml = isEdited ? '<span style="font-size: 10px; color: #94a3b8; margin-left: 5px;">(ред.)</span>' : '';
     
-    if (error) {
-        console.error('Ошибка создания поста:', error)
-        alert('Ошибка при создании поста')
-        return
+    var authorNameHtml = isOwn 
+        ? 'Вы' 
+        : '<a href="profile.html?user=' + p.user_id + '" style="color: #1e40af; text-decoration: none; cursor: pointer;">' + escapeHtml(userName) + '</a>';
+    
+    var imageHtml = '';
+    if (p.image && p.image !== '') {
+        imageHtml = '<img src="' + p.image + '" onclick="openImageViewer(\'' + p.image + '\')" style="max-width: 100%; max-height: 400px; border-radius: 12px; margin-top: 10px; cursor: pointer; object-fit: contain;">';
     }
     
-    // Обновляем счетчик постов у пользователя
-    await supabase
-        .from('users')
-        .update({ posts_count: (currentUser.posts_count || 0) + 1 })
-        .eq('id', currentUser.id)
+    var commentsHtml = '';
+    if (comments && comments.length > 0) {
+        commentsHtml = '<div class="comments-list-' + p.id + '" style="margin-bottom: 10px;">' + renderComments(comments, userMap) + '</div>';
+    } else {
+        commentsHtml = '<div class="comments-list-' + p.id + '" style="margin-bottom: 10px;"><div style="color: #94a3b8; font-size: 13px; text-align: center;">Нет комментариев</div></div>';
+    }
     
-    // Очищаем форму
-    document.getElementById('postText').value = ''
-    document.getElementById('postImage').value = ''
-    const fileNameSpan = document.getElementById('fileName')
-    if (fileNameSpan) fileNameSpan.textContent = 'Файл не выбран'
-    
-    // Добавляем пост в ленту
-    addPostToFeed(data)
+    return `
+        <div class="card" data-post-id="${p.id}" style="margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    ${avatarHtml}
+                    <div>
+                        <div style="font-weight: bold;">
+                            ${authorNameHtml}
+                            ${editedHtml}
+                        </div>
+                        <div style="font-size: 12px; color: #64748b;">${formatTime(p.created_at)}</div>
+                    </div>
+                </div>
+                ${menuHtml}
+            </div>
+            <div class="post-content-${p.id}" style="margin-bottom: 12px;">
+                ${escapeHtml(p.text || '')}
+            </div>
+            ${imageHtml}
+            <div style="display: flex; gap: 20px; padding: 8px 0; margin-top: 12px; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
+                <button class="like-btn" data-post-id="${p.id}" style="background: none; border: none; cursor: pointer; font-size: 14px; color: ${isLiked ? '#ef4444' : '#64748b'}; display: flex; align-items: center; gap: 4px;">
+                    ❤️ <span class="like-count-${p.id}">${likesCount}</span>
+                </button>
+                <button class="comment-toggle-btn" data-post-id="${p.id}" style="background: none; border: none; cursor: pointer; font-size: 14px; color: #64748b; display: flex; align-items: center; gap: 4px;">
+                    💬 <span class="comment-count-${p.id}">${comments.length}</span>
+                </button>
+            </div>
+            <div class="comments-section-${p.id}" style="display: none; margin-top: 12px;">
+                <div class="comments-list-${p.id}">
+                    ${commentsHtml}
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 10px;">
+                    <input type="text" class="comment-input-${p.id}" placeholder="Написать комментарий..." style="flex: 1; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 20px; font-size: 14px;">
+                    <button class="comment-submit-btn" data-post-id="${p.id}" style="padding: 8px 16px; background: #1e40af; color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 14px;">Отправить</button>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 async function loadFeed() {
-    const feed = document.getElementById('feed')
-    if (!feed) return
+    var feed = document.getElementById('feed');
+    if (!feed) return;
     
-    feed.innerHTML = '<div style="text-align: center; padding: 40px;">Загрузка...</div>'
+    feed.innerHTML = '<div class="card" style="text-align: center;">Загрузка...</div>';
     
-    const { data: posts, error } = await supabase
-        .from('posts')
-        .select('*')
-        .order('created_at', { ascending: false })
-    
+    var { data, error } = await dbClient.from('posts').select('*').order('created_at', { ascending: false });
     if (error) {
-        console.error('Ошибка загрузки постов:', error)
-        feed.innerHTML = '<div class="card" style="text-align: center;">Ошибка загрузки</div>'
-        return
+        feed.innerHTML = '<div class="card">Ошибка загрузки</div>';
+        return;
     }
     
-    if (posts.length === 0) {
-        feed.innerHTML = '<div class="card" style="text-align: center;">Нет постов. Будьте первым!</div>'
-        return
+    var user = getUser();
+    if (!data || data.length === 0) {
+        feed.innerHTML = '<div class="card">Нет постов. Создайте первый!</div>';
+        return;
     }
     
-    // Загружаем данные пользователей для всех постов
-    const userIds = [...new Set(posts.map(p => p.user_id))]
-    const { data: users } = await supabase
-        .from('users')
-        .select('id, full_name, avatar')
-        .in('id', userIds)
-    
-    const userMap = {}
-    users?.forEach(u => userMap[u.id] = u)
-    
-    feed.innerHTML = posts.map(post => renderPost(post, userMap)).join('')
-    
-    posts.forEach(post => {
-        attachPostHandlers(post.id)
-    })
-}
-
-function renderPost(post, userMap) {
-    const postUser = userMap[post.user_id] || { full_name: 'Пользователь', avatar: null }
-    const userName = postUser.full_name
-    const userAvatar = postUser.avatar
-    
-    const avatarHtml = userAvatar 
-        ? `<img src="${userAvatar}" class="post-avatar" style="object-fit: cover;">`
-        : `<div class="post-avatar">${userName[0].toUpperCase()}</div>`
-    
-    const isLiked = post.likes?.includes(currentUser?.id) || false
-    
-    let reactionsHtml = ''
-    if (post.reactions) {
-        reactionsHtml = Object.entries(post.reactions).map(([emoji, usersList]) => {
-            if (usersList.length > 0) {
-                return `<span class="reaction-badge" style="margin-left: 5px;">${emoji} ${usersList.length}</span>`
-            }
-            return ''
-        }).join('')
-    }
-    
-    // Загружаем комментарии для этого поста
-    loadCommentsForPost(post.id).then(comments => {
-        updateCommentsDisplay(post.id, comments)
-    })
-    
-    return `
-        <div class="card" data-post-id="${post.id}">
-            <div class="post-header">
-                ${avatarHtml}
-                <div class="post-user-info">
-                    <a href="profile.html?user=${post.user_id}" class="post-user-name">${escapeHtml(userName)}</a>
-                    <div class="post-time">${formatTime(post.created_at)}</div>
-                </div>
-            </div>
-            <div class="post-content">
-                ${post.text ? `<div class="post-text">${escapeHtml(post.text)}</div>` : ''}
-                ${post.image ? `<img src="${post.image}" class="post-image" alt="post image" onclick="openImageModal('${post.image}')">` : ''}
-            </div>
-            <div class="post-actions">
-                <div class="post-action like-action ${isLiked ? 'active' : ''}" data-action="like">
-                    ❤️ <span class="like-count">${post.likes?.length || 0}</span>
-                </div>
-                <div class="post-action reaction-action" data-action="reaction">
-                    😊 Реакции ${reactionsHtml}
-                </div>
-                <div class="post-action comment-action" data-action="comment">
-                    💬 <span class="comment-count" id="comment-count-${post.id}">0</span>
-                </div>
-            </div>
-            <div class="comments-section" id="comments-section-${post.id}" style="display: none;">
-                <div class="comments-list" id="comments-list-${post.id}">
-                    <div style="padding: 10px; text-align: center;">Загрузка комментариев...</div>
-                </div>
-                <div class="comment-form">
-                    <input type="text" class="comment-input" id="comment-input-${post.id}" placeholder="Написать комментарий...">
-                    <button class="btn btn-primary submit-comment" data-post-id="${post.id}">Отправить</button>
-                </div>
-            </div>
-        </div>
-    `
-}
-
-async function loadCommentsForPost(postId) {
-    const { data: comments, error } = await supabase
-        .from('comments')
-        .select('*')
-        .eq('post_id', postId)
-        .order('created_at', { ascending: true })
-    
-    if (error) {
-        console.error('Ошибка загрузки комментариев:', error)
-        return []
-    }
-    
-    // Загружаем данные пользователей для комментариев
-    const userIds = [...new Set(comments.map(c => c.user_id))]
-    const { data: users } = await supabase
-        .from('users')
-        .select('id, full_name')
-        .in('id', userIds)
-    
-    const userMap = {}
-    users?.forEach(u => userMap[u.id] = u)
-    
-    return comments.map(comment => ({
-        ...comment,
-        user_name: userMap[comment.user_id]?.full_name || 'Пользователь'
-    }))
-}
-
-function updateCommentsDisplay(postId, comments) {
-    const commentsList = document.getElementById(`comments-list-${postId}`)
-    const commentCountSpan = document.getElementById(`comment-count-${postId}`)
-    
-    if (commentCountSpan) {
-        commentCountSpan.textContent = comments.length
-    }
-    
-    if (commentsList) {
-        if (comments.length === 0) {
-            commentsList.innerHTML = '<div class="empty-state">Нет комментариев</div>'
-        } else {
-            commentsList.innerHTML = comments.map(comment => `
-                <div class="comment">
-                    <div class="comment-avatar">${comment.user_name[0].toUpperCase()}</div>
-                    <div class="comment-content">
-                        <div class="comment-user">${escapeHtml(comment.user_name)}</div>
-                        <div class="comment-text">${escapeHtml(comment.text)}</div>
-                        <div class="comment-time">${formatTime(comment.created_at)}</div>
-                    </div>
-                </div>
-            `).join('')
-        }
-    }
-}
-
-function attachPostHandlers(postId) {
-    const likeBtn = document.querySelector(`.card[data-post-id="${postId}"] .like-action`)
-    if (likeBtn) {
-        likeBtn.onclick = () => toggleLike(postId)
-    }
-    
-    const reactionBtn = document.querySelector(`.card[data-post-id="${postId}"] .reaction-action`)
-    if (reactionBtn) {
-        reactionBtn.onclick = (e) => showReactionPicker(e, postId)
-    }
-    
-    const commentBtn = document.querySelector(`.card[data-post-id="${postId}"] .comment-action`)
-    const commentsSection = document.getElementById(`comments-section-${postId}`)
-    if (commentBtn && commentsSection) {
-        commentBtn.onclick = () => {
-            const isVisible = commentsSection.style.display !== 'none'
-            commentsSection.style.display = isVisible ? 'none' : 'block'
-            if (!isVisible) {
-                loadCommentsForPost(postId).then(comments => {
-                    updateCommentsDisplay(postId, comments)
-                })
-            }
+    var userIds = [...new Set(data.map(p => p.user_id))];
+    var { data: users } = await dbClient.from('users').select('id, full_name, avatar').in('id', userIds);
+    var userMap = {};
+    if (users) {
+        for (var i = 0; i < users.length; i++) {
+            userMap[users[i].id] = users[i];
         }
     }
     
-    const submitComment = document.querySelector(`.submit-comment[data-post-id="${postId}"]`)
-    const commentInput = document.getElementById(`comment-input-${postId}`)
-    if (submitComment && commentInput) {
-        submitComment.onclick = () => {
-            addComment(postId, commentInput.value)
-            commentInput.value = ''
-        }
+    var html = '';
+    for (var i = 0; i < data.length; i++) {
+        var p = data[i];
+        var userInfo = userMap[p.user_id] || { full_name: 'Пользователь', avatar: null };
+        html += renderPostCard(p, userInfo, user, userMap);
     }
-}
-
-async function toggleLike(postId) {
-    // Получаем текущий пост
-    const { data: post, error } = await supabase
-        .from('posts')
-        .select('likes')
-        .eq('id', postId)
-        .single()
+    feed.innerHTML = html;
     
-    if (error) return
+    attachEventHandlers();
     
-    let likes = post.likes || []
-    
-    if (likes.includes(currentUser.id)) {
-        likes = likes.filter(id => id !== currentUser.id)
-    } else {
-        likes.push(currentUser.id)
-        // Уведомление автору
-        await addNotification(post.user_id, 'like', currentUser.id, postId)
+    if (window.realtimeChannel) {
+        dbClient.removeChannel(window.realtimeChannel);
     }
     
-    // Обновляем лайки
-    await supabase
-        .from('posts')
-        .update({ likes: likes })
-        .eq('id', postId)
-    
-    // Обновляем UI
-    const likeCountSpan = document.querySelector(`.card[data-post-id="${postId}"] .like-count`)
-    if (likeCountSpan) {
-        likeCountSpan.textContent = likes.length
-    }
-    
-    const likeBtn = document.querySelector(`.card[data-post-id="${postId}"] .like-action`)
-    if (likeBtn) {
-        if (likes.includes(currentUser.id)) {
-            likeBtn.classList.add('active')
-        } else {
-            likeBtn.classList.remove('active')
-        }
-    }
-}
-
-async function addComment(postId, text) {
-    if (!text.trim()) return
-    
-    const { error } = await supabase
-        .from('comments')
-        .insert({
-            post_id: postId,
-            user_id: currentUser.id,
-            text: text.trim()
-        })
-    
-    if (error) {
-        console.error('Ошибка добавления комментария:', error)
-        return
-    }
-    
-    // Получаем пост для уведомления
-    const { data: post } = await supabase
-        .from('posts')
-        .select('user_id')
-        .eq('id', postId)
-        .single()
-    
-    if (post && post.user_id !== currentUser.id) {
-        await addNotification(post.user_id, 'comment', currentUser.id, postId)
-    }
-    
-    // Обновляем комментарии
-    const comments = await loadCommentsForPost(postId)
-    updateCommentsDisplay(postId, comments)
-}
-
-function addPostToFeed(post) {
-    const feed = document.getElementById('feed')
-    if (!feed) return
-    
-    const postHtml = `
-        <div class="card" data-post-id="${post.id}">
-            <div class="post-header">
-                <div class="post-avatar">${currentUser.full_name[0].toUpperCase()}</div>
-                <div class="post-user-info">
-                    <a href="profile.html" class="post-user-name">${escapeHtml(currentUser.full_name)}</a>
-                    <div class="post-time">только что</div>
-                </div>
-            </div>
-            <div class="post-content">
-                ${post.text ? `<div class="post-text">${escapeHtml(post.text)}</div>` : ''}
-                ${post.image ? `<img src="${post.image}" class="post-image" alt="post image">` : ''}
-            </div>
-            <div class="post-actions">
-                <div class="post-action like-action">❤️ <span class="like-count">0</span></div>
-                <div class="post-action reaction-action">😊 Реакции</div>
-                <div class="post-action comment-action">💬 <span class="comment-count">0</span></div>
-            </div>
-            <div class="comments-section" style="display: none;">
-                <div class="comments-list"></div>
-                <div class="comment-form">
-                    <input type="text" class="comment-input" placeholder="Написать комментарий...">
-                    <button class="btn btn-primary submit-comment">Отправить</button>
-                </div>
-            </div>
-        </div>
-    `
-    
-    feed.insertAdjacentHTML('afterbegin', postHtml)
-    attachPostHandlers(post.id)
-}
-
-function subscribeToNewPosts() {
-    supabase
-        .channel('posts-channel')
+    window.realtimeChannel = dbClient
+        .channel('posts-realtime')
         .on('postgres_changes', 
             { event: 'INSERT', schema: 'public', table: 'posts' },
             async (payload) => {
-                const newPost = payload.new
-                // Не добавляем свой пост (уже добавлен)
-                if (newPost.user_id !== currentUser.id) {
-                    // Загружаем данные автора
-                    const { data: author } = await supabase
-                        .from('users')
-                        .select('full_name, avatar')
-                        .eq('id', newPost.user_id)
-                        .single()
-                    
-                    const feed = document.getElementById('feed')
-                    if (feed) {
-                        const postHtml = `
-                            <div class="card" data-post-id="${newPost.id}">
-                                <div class="post-header">
-                                    ${author.avatar ? `<img src="${author.avatar}" class="post-avatar">` : `<div class="post-avatar">${author.full_name[0].toUpperCase()}</div>`}
-                                    <div class="post-user-info">
-                                        <a href="profile.html?user=${newPost.user_id}" class="post-user-name">${escapeHtml(author.full_name)}</a>
-                                        <div class="post-time">только что</div>
-                                    </div>
-                                </div>
-                                <div class="post-content">
-                                    ${newPost.text ? `<div class="post-text">${escapeHtml(newPost.text)}</div>` : ''}
-                                    ${newPost.image ? `<img src="${newPost.image}" class="post-image">` : ''}
-                                </div>
-                                <div class="post-actions">
-                                    <div class="post-action like-action">❤️ <span class="like-count">0</span></div>
-                                    <div class="post-action reaction-action">😊 Реакции</div>
-                                    <div class="post-action comment-action">💬 <span class="comment-count">0</span></div>
-                                </div>
-                                <div class="comments-section" style="display: none;">
-                                    <div class="comments-list"></div>
-                                    <div class="comment-form">
-                                        <input type="text" class="comment-input" placeholder="Написать комментарий...">
-                                        <button class="btn btn-primary submit-comment">Отправить</button>
-                                    </div>
-                                </div>
-                            </div>
-                        `
-                        feed.insertAdjacentHTML('afterbegin', postHtml)
-                        attachPostHandlers(newPost.id)
+                await addNewPostToFeed(payload.new);
+            }
+        )
+        .on('postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'posts' },
+            (payload) => {
+                updatePostInFeed(payload.new);
+            }
+        )
+        .on('postgres_changes',
+            { event: 'DELETE', schema: 'public', table: 'posts' },
+            (payload) => {
+                var postElement = document.querySelector('.card[data-post-id="' + payload.old.id + '"]');
+                if (postElement) postElement.remove();
+            }
+        )
+        .subscribe();
+}
+
+function attachEventHandlers() {
+    var likeBtns = document.querySelectorAll('.like-btn');
+    for (var i = 0; i < likeBtns.length; i++) {
+        likeBtns[i].onclick = function() { toggleLike(this.getAttribute('data-post-id')); };
+    }
+    
+    var toggleBtns = document.querySelectorAll('.comment-toggle-btn');
+    for (var i = 0; i < toggleBtns.length; i++) {
+        toggleBtns[i].onclick = function() {
+            var postId = this.getAttribute('data-post-id');
+            var section = document.querySelector('.comments-section-' + postId);
+            if (section) {
+                section.style.display = section.style.display === 'none' ? 'block' : 'none';
+            }
+        };
+    }
+    
+    var submitBtns = document.querySelectorAll('.comment-submit-btn');
+    for (var i = 0; i < submitBtns.length; i++) {
+        submitBtns[i].onclick = function() {
+            var postId = this.getAttribute('data-post-id');
+            var input = document.querySelector('.comment-input-' + postId);
+            var text = input.value.trim();
+            if (text) {
+                addComment(postId, text);
+                input.value = '';
+            }
+        };
+    }
+    
+    var commentInputs = document.querySelectorAll('[class^="comment-input-"]');
+    for (var i = 0; i < commentInputs.length; i++) {
+        commentInputs[i].onkeypress = function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var classes = this.className.split(' ');
+                var postId = '';
+                for (var j = 0; j < classes.length; j++) {
+                    if (classes[j].indexOf('comment-input-') === 0) {
+                        postId = classes[j].replace('comment-input-', '');
+                        break;
                     }
                 }
+                var submitBtn = document.querySelector('.comment-submit-btn[data-post-id="' + postId + '"]');
+                if (submitBtn) submitBtn.click();
             }
-        )
-        .subscribe()
+        };
+    }
+    
+    var menuBtns = document.querySelectorAll('.post-menu-btn');
+    for (var i = 0; i < menuBtns.length; i++) {
+        menuBtns[i].onclick = function(e) {
+            e.stopPropagation();
+            var postId = this.getAttribute('data-post-id');
+            var dropdown = document.querySelector('.post-menu-dropdown-' + postId);
+            if (dropdown) {
+                dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+            }
+        };
+    }
+    
+    var editBtns = document.querySelectorAll('.edit-post-btn');
+    for (var i = 0; i < editBtns.length; i++) {
+        editBtns[i].onclick = function(e) {
+            e.stopPropagation();
+            var postId = this.getAttribute('data-post-id');
+            editPost(postId);
+        };
+    }
+    
+    var deleteBtns = document.querySelectorAll('.delete-post-btn');
+    for (var i = 0; i < deleteBtns.length; i++) {
+        deleteBtns[i].onclick = function(e) {
+            e.stopPropagation();
+            var postId = this.getAttribute('data-post-id');
+            deletePost(postId);
+        };
+    }
+    
+    document.addEventListener('click', function() {
+        var dropdowns = document.querySelectorAll('[class^="post-menu-dropdown-"]');
+        for (var i = 0; i < dropdowns.length; i++) {
+            dropdowns[i].style.display = 'none';
+        }
+    });
 }
 
-// ========== ПРОФИЛЬ ==========
-async function loadProfile() {
-    const urlParams = new URLSearchParams(window.location.search)
-    const profileUserId = urlParams.get('user') || currentUser.id
-    const isOwnProfile = profileUserId === currentUser.id
+function renderComments(comments, userMap) {
+    if (!comments || comments.length === 0) {
+        return '<div style="color: #94a3b8; font-size: 13px; text-align: center;">Нет комментариев</div>';
+    }
+    var html = '';
+    for (var i = 0; i < comments.length; i++) {
+        var c = comments[i];
+        var userInfo = userMap[c.user_id] || { full_name: 'Пользователь' };
+        html += `
+            <div style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 12px;">
+                <div style="font-weight: bold; font-size: 13px;">${escapeHtml(userInfo.full_name)}</div>
+                <div style="font-size: 14px;">${escapeHtml(c.text)}</div>
+                <div style="font-size: 10px; color: #94a3b8;">${formatTime(c.created_at)}</div>
+            </div>
+        `;
+    }
+    return html;
+}
+
+async function toggleLike(postId) {
+    var user = getUser();
+    if (!user) return;
     
-    let profileUser
-    if (isOwnProfile) {
-        profileUser = currentUser
+    var { data: post } = await dbClient.from('posts').select('user_id, likes').eq('id', postId).single();
+    var likes = post.likes || [];
+    var wasLiked = likes.includes(user.id);
+    
+    if (wasLiked) {
+        likes = likes.filter(function(id) { return id !== user.id; });
     } else {
-        const { data } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', profileUserId)
-            .single()
-        profileUser = data
+        likes.push(user.id);
     }
     
-    if (!profileUser) {
-        document.getElementById('profileContent').innerHTML = '<div class="card">Пользователь не найден</div>'
-        return
+    await dbClient.from('posts').update({ likes: likes }).eq('id', postId);
+    
+    if (!wasLiked && post.user_id !== user.id) {
+        var { data: author } = await dbClient.from('users').select('notifications').eq('id', post.user_id).single();
+        var notifications = author.notifications || [];
+        
+        notifications.unshift({
+            id: Date.now(),
+            type: 'like',
+            from_user: user.id,
+            from_name: user.full_name,
+            post_id: postId,
+            timestamp: new Date().toISOString(),
+            read: false
+        });
+        
+        if (notifications.length > 50) notifications.pop();
+        await dbClient.from('users').update({ notifications: notifications }).eq('id', post.user_id);
     }
     
-    const friends = profileUser.friends || []
-    const isFriend = friends.includes(currentUser.id)
-    const hasRequest = (profileUser.friend_requests || []).includes(currentUser.id)
+    var likeCountSpan = document.querySelector('.like-count-' + postId);
+    if (likeCountSpan) likeCountSpan.textContent = likes.length;
     
-    const avatarHtml = profileUser.avatar 
-        ? `<img src="${profileUser.avatar}" class="profile-avatar-large" style="object-fit: cover;">`
-        : `<div class="profile-avatar-large">${profileUser.full_name[0].toUpperCase()}</div>`
+    var likeBtn = document.querySelector('.like-btn[data-post-id="' + postId + '"]');
+    if (likeBtn) likeBtn.style.color = likes.includes(user.id) ? '#ef4444' : '#64748b';
+}
+
+async function addComment(postId, text) {
+    var user = getUser();
+    if (!user) return;
     
-    const editButton = isOwnProfile ? 
-        `<button class="edit-profile-btn" onclick="openEditProfile()">✏️ Редактировать профиль</button>` : ''
+    var { data: post } = await dbClient.from('posts').select('user_id, comments').eq('id', postId).single();
+    var comments = post.comments || [];
     
-    const bioHtml = profileUser.bio ? `<p class="profile-bio">${escapeHtml(profileUser.bio)}</p>` : ''
-    const cityHtml = profileUser.city ? `<p class="profile-city">📍 ${escapeHtml(profileUser.city)}</p>` : ''
+    comments.push({
+        id: Date.now(),
+        user_id: user.id,
+        text: text,
+        created_at: new Date().toISOString()
+    });
     
-    let friendButtonHtml = ''
-    if (!isOwnProfile) {
-        if (isFriend) {
-            friendButtonHtml = '<button class="friend-button" onclick="removeFriend(\'' + profileUserId + '\')">Друзья ✓</button>'
-        } else if (hasRequest) {
-            friendButtonHtml = '<button class="friend-button requested">Запрос отправлен</button>'
-        } else {
-            friendButtonHtml = '<button class="friend-button" onclick="sendFriendRequest(\'' + profileUserId + '\')">Добавить в друзья</button>'
+    await dbClient.from('posts').update({ comments: comments }).eq('id', postId);
+    
+    if (post.user_id !== user.id) {
+        var { data: author } = await dbClient.from('users').select('notifications').eq('id', post.user_id).single();
+        var notifications = author.notifications || [];
+        
+        notifications.unshift({
+            id: Date.now(),
+            type: 'comment',
+            from_user: user.id,
+            from_name: user.full_name,
+            post_id: postId,
+            text: text.length > 50 ? text.substring(0, 50) + '...' : text,
+            timestamp: new Date().toISOString(),
+            read: false
+        });
+        
+        if (notifications.length > 50) notifications.pop();
+        await dbClient.from('users').update({ notifications: notifications }).eq('id', post.user_id);
+    }
+    
+    var commentCountSpan = document.querySelector('.comment-count-' + postId);
+    if (commentCountSpan) commentCountSpan.textContent = comments.length;
+    
+    var userIds = [];
+    for (var i = 0; i < comments.length; i++) {
+        if (userIds.indexOf(comments[i].user_id) === -1) {
+            userIds.push(comments[i].user_id);
         }
     }
     
-    document.getElementById('profileContent').innerHTML = `
+    var { data: users } = await dbClient.from('users').select('id, full_name, avatar').in('id', userIds);
+    var userMap = {};
+    if (users) {
+        for (var i = 0; i < users.length; i++) {
+            userMap[users[i].id] = users[i];
+        }
+    }
+    
+    var commentsList = document.querySelector('.comments-list-' + postId);
+    if (commentsList) {
+        commentsList.innerHTML = renderComments(comments, userMap);
+    }
+}
+
+async function editPost(postId) {
+    var user = getUser();
+    if (!user) return;
+    
+    var { data: post } = await dbClient.from('posts').select('text').eq('id', postId).single();
+    if (!post) return;
+    
+    var newText = prompt('Редактировать пост:', post.text);
+    if (newText === null || newText.trim() === '') return;
+    
+    var { error } = await dbClient
+        .from('posts')
+        .update({ 
+            text: newText.trim(),
+            edited: true
+        })
+        .eq('id', postId);
+    
+    if (error) {
+        alert('Ошибка при редактировании');
+        return;
+    }
+    
+    var contentDiv = document.querySelector('.post-content-' + postId);
+    if (contentDiv) {
+        contentDiv.innerHTML = escapeHtml(newText.trim());
+    }
+    
+    var nameDiv = document.querySelector('.card[data-post-id="' + postId + '"] .post-user-info div:first-child');
+    if (nameDiv && !nameDiv.innerHTML.includes('(ред.)')) {
+        nameDiv.innerHTML += '<span style="font-size: 10px; color: #94a3b8; margin-left: 5px;">(ред.)</span>';
+    }
+    
+    alert('Пост отредактирован!');
+}
+
+async function deletePost(postId) {
+    if (!confirm('Удалить пост? Это действие нельзя отменить.')) return;
+    
+    var user = getUser();
+    if (!user) return;
+    
+    var { error } = await dbClient.from('posts').delete().eq('id', postId);
+    
+    if (error) {
+        alert('Ошибка при удалении');
+        return;
+    }
+    
+    var postElement = document.querySelector('.card[data-post-id="' + postId + '"]');
+    if (postElement) {
+        postElement.remove();
+    }
+    
+    var { count } = await dbClient.from('posts').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
+    user.posts_count = count;
+    localStorage.setItem('currentUser', JSON.stringify(user));
+    
+    if (window.location.pathname.includes('profile.html')) {
+        loadProfile();
+        loadUserPosts();
+    }
+    
+    alert('Пост удален!');
+}
+
+async function addNewPostToFeed(newPost) {
+    var feed = document.getElementById('feed');
+    if (!feed) return;
+    
+    var user = getUser();
+    var { data: author } = await dbClient.from('users').select('id, full_name, avatar').eq('id', newPost.user_id).single();
+    if (!author) return;
+    
+    var userMap = {};
+    userMap[author.id] = author;
+    
+    var postHtml = renderPostCard(newPost, author, user, userMap);
+    feed.insertAdjacentHTML('afterbegin', postHtml);
+    
+    attachSinglePostHandlers(newPost.id);
+}
+
+function attachSinglePostHandlers(postId) {
+    var likeBtn = document.querySelector('.like-btn[data-post-id="' + postId + '"]');
+    if (likeBtn) likeBtn.onclick = function() { toggleLike(postId); };
+    
+    var commentToggle = document.querySelector('.comment-toggle-btn[data-post-id="' + postId + '"]');
+    if (commentToggle) {
+        commentToggle.onclick = function() {
+            var section = document.querySelector('.comments-section-' + postId);
+            if (section) section.style.display = section.style.display === 'none' ? 'block' : 'none';
+        };
+    }
+    
+    var submitBtn = document.querySelector('.comment-submit-btn[data-post-id="' + postId + '"]');
+    if (submitBtn) {
+        submitBtn.onclick = function() {
+            var input = document.querySelector('.comment-input-' + postId);
+            var text = input.value.trim();
+            if (text) {
+                addComment(postId, text);
+                input.value = '';
+            }
+        };
+    }
+    
+    var commentInput = document.querySelector('.comment-input-' + postId);
+    if (commentInput) {
+        commentInput.onkeypress = function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var submit = document.querySelector('.comment-submit-btn[data-post-id="' + postId + '"]');
+                if (submit) submit.click();
+            }
+        };
+    }
+    
+    var menuBtn = document.querySelector('.post-menu-btn[data-post-id="' + postId + '"]');
+    if (menuBtn) {
+        menuBtn.onclick = function(e) {
+            e.stopPropagation();
+            var dropdown = document.querySelector('.post-menu-dropdown-' + postId);
+            if (dropdown) dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+        };
+    }
+    
+    var editBtn = document.querySelector('.edit-post-btn[data-post-id="' + postId + '"]');
+    if (editBtn) editBtn.onclick = function(e) { e.stopPropagation(); editPost(postId); };
+    
+    var deleteBtn = document.querySelector('.delete-post-btn[data-post-id="' + postId + '"]');
+    if (deleteBtn) deleteBtn.onclick = function(e) { e.stopPropagation(); deletePost(postId); };
+}
+
+function updatePostInFeed(updatedPost) {
+    var postElement = document.querySelector('.card[data-post-id="' + updatedPost.id + '"]');
+    if (!postElement) return;
+    
+    var likeCountSpan = postElement.querySelector('.like-count-' + updatedPost.id);
+    if (likeCountSpan) likeCountSpan.textContent = updatedPost.likes ? updatedPost.likes.length : 0;
+    
+    var commentCountSpan = postElement.querySelector('.comment-count-' + updatedPost.id);
+    if (commentCountSpan) commentCountSpan.textContent = updatedPost.comments ? updatedPost.comments.length : 0;
+}
+
+async function loadProfile() {
+    var cont = document.getElementById('profileContent');
+    if (!cont) return;
+    var user = getUser();
+    if (!user) return;
+    
+    var { count } = await dbClient.from('posts').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
+    
+    // Получаем количество друзей из таблицы friend_requests
+    var { data: acceptedFriends } = await dbClient
+        .from('friend_requests')
+        .select('*')
+        .or(`and(from_user.eq.${user.id},status.eq.accepted),and(to_user.eq.${user.id},status.eq.accepted)`);
+    
+    var friendsCount = acceptedFriends?.length || 0;
+    
+    // Получаем данные друзей для отображения
+    var friendsHtml = '';
+    if (acceptedFriends && acceptedFriends.length > 0) {
+        var friendIds = [];
+        for (var i = 0; i < acceptedFriends.length; i++) {
+            var fr = acceptedFriends[i];
+            var friendId = fr.from_user === user.id ? fr.to_user : fr.from_user;
+            friendIds.push(friendId);
+        }
+        
+        var { data: friendsData } = await dbClient.from('users').select('id, full_name, avatar').in('id', friendIds);
+        if (friendsData && friendsData.length > 0) {
+            friendsHtml = '<div style="margin-top: 20px;"><h3>👥 Друзья</h3><div style="display: flex; flex-wrap: wrap; gap: 12px;">';
+            for (var i = 0; i < friendsData.length; i++) {
+                var f = friendsData[i];
+                var fAvatar = f.avatar 
+                    ? '<img src="' + f.avatar + '" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">'
+                    : '<div style="width: 32px; height: 32px; background: #1e40af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px;">' + f.full_name.charAt(0).toUpperCase() + '</div>';
+                friendsHtml += `
+                    <div onclick="location.href='profile.html?user=${f.id}'" style="display: flex; align-items: center; gap: 8px; background: #f8fafc; padding: 6px 12px; border-radius: 30px; cursor: pointer;">
+                        ${fAvatar}
+                        <span>${escapeHtml(f.full_name)}</span>
+                    </div>
+                `;
+            }
+            friendsHtml += '</div></div>';
+        }
+    }
+    
+    var avatarHtml = user.avatar 
+        ? '<img src="' + user.avatar + '" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 auto; display: block;">'
+        : '<div style="width: 80px; height: 80px; background: #1e40af; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; font-size: 32px; color: white;">' + (user.full_name ? user.full_name.charAt(0).toUpperCase() : 'U') + '</div>';
+    
+    var bioHtml = user.bio ? '<div style="margin: 10px 0; color: #475569;">' + escapeHtml(user.bio) + '</div>' : '';
+    var cityHtml = user.city ? '<div style="margin: 5px 0; color: #64748b;">📍 ' + escapeHtml(user.city) + '</div>' : '';
+    
+    cont.innerHTML = `
         <div class="profile-header">
             ${avatarHtml}
-            <h1 class="profile-name">${escapeHtml(profileUser.full_name)}</h1>
+            <h1 class="profile-name">${escapeHtml(user.full_name)}</h1>
             ${bioHtml}
             ${cityHtml}
-            <div class="profile-email">${profileUser.email}</div>
-            ${editButton}
-            ${friendButtonHtml}
+            <div class="profile-email">${user.email}</div>
+            <button id="editProfileBtn" class="edit-profile-btn">✏️ Редактировать профиль</button>
             <div class="profile-stats">
                 <div class="stat">
-                    <div class="stat-number">${profileUser.posts_count || 0}</div>
-                    <div class="stat-label">Постов</div>
+                    <div class="stat-number">${count || 0}</div>
+                    <div class="stat-label">постов</div>
                 </div>
                 <div class="stat">
-                    <div class="stat-number">${friends.length}</div>
-                    <div class="stat-label">Друзей</div>
+                    <div class="stat-number">${friendsCount}</div>
+                    <div class="stat-label">друзей</div>
                 </div>
             </div>
         </div>
-    `
+    `;
+    
+    if (friendsHtml) {
+        cont.innerHTML += friendsHtml;
+    }
+    
+    var editBtn = document.getElementById('editProfileBtn');
+    if (editBtn) editBtn.onclick = function() { openEditModal(); };
 }
 
-async function loadUserPosts() {
-    const urlParams = new URLSearchParams(window.location.search)
-    const profileUserId = urlParams.get('user') || currentUser.id
+async function loadOtherProfile(userId) {
+    var cont = document.getElementById('profileContent');
+    if (!cont) return;
+    var currentUser = getUser();
+    var { data: profileUser, error } = await dbClient.from('users').select('*').eq('id', userId).single();
+    if (error || !profileUser) {
+        cont.innerHTML = '<div style="background:white; border-radius:20px; padding:30px; text-align:center;">Пользователь не найден</div>';
+        return;
+    }
     
-    const { data: posts, error } = await supabase
-        .from('posts')
+    var { count } = await dbClient.from('posts').select('*', { count: 'exact', head: true }).eq('user_id', userId);
+    
+    // Получаем друзей этого пользователя
+    var { data: userFriends } = await dbClient
+        .from('friend_requests')
         .select('*')
-        .eq('user_id', profileUserId)
-        .order('created_at', { ascending: false })
+        .or(`and(from_user.eq.${profileUser.id},status.eq.accepted),and(to_user.eq.${profileUser.id},status.eq.accepted)`);
+    var friendsCount = userFriends?.length || 0;
     
-    const container = document.getElementById('userPosts')
-    if (container) {
-        if (!posts || posts.length === 0) {
-            container.innerHTML = '<h3>Посты</h3><div class="card" style="text-align: center;">Нет постов</div>'
-            return
+    // Получаем данные друзей для отображения
+    var friendsHtml = '';
+    if (userFriends && userFriends.length > 0) {
+        var friendIds = [];
+        for (var i = 0; i < userFriends.length; i++) {
+            var fr = userFriends[i];
+            var friendId = fr.from_user === profileUser.id ? fr.to_user : fr.from_user;
+            friendIds.push(friendId);
         }
         
-        const userMap = { [profileUserId]: { full_name: currentUser.full_name, avatar: currentUser.avatar } }
-        container.innerHTML = '<h3>Посты</h3>' + posts.map(post => renderPost(post, userMap)).join('')
-        posts.forEach(post => attachPostHandlers(post.id))
-    }
-}
-
-// ========== ДРУЗЬЯ ==========
-async function sendFriendRequest(userId) {
-    const { data: user } = await supabase
-        .from('users')
-        .select('friend_requests')
-        .eq('id', userId)
-        .single()
-    
-    const requests = user.friend_requests || []
-    if (!requests.includes(currentUser.id)) {
-        requests.push(currentUser.id)
-        await supabase
-            .from('users')
-            .update({ friend_requests: requests })
-            .eq('id', userId)
-        
-        await addNotification(userId, 'friend_request', currentUser.id)
-        alert('Запрос отправлен!')
-        loadProfile()
-    }
-}
-
-async function removeFriend(userId) {
-    // Удаляем из друзей у текущего пользователя
-    const { data: currentUserData } = await supabase
-        .from('users')
-        .select('friends')
-        .eq('id', currentUser.id)
-        .single()
-    
-    const currentFriends = (currentUserData.friends || []).filter(id => id !== userId)
-    await supabase
-        .from('users')
-        .update({ friends: currentFriends })
-        .eq('id', currentUser.id)
-    
-    // Удаляем из друзей у другого пользователя
-    const { data: otherUser } = await supabase
-        .from('users')
-        .select('friends')
-        .eq('id', userId)
-        .single()
-    
-    const otherFriends = (otherUser.friends || []).filter(id => id !== currentUser.id)
-    await supabase
-        .from('users')
-        .update({ friends: otherFriends })
-        .eq('id', userId)
-    
-    alert('Пользователь удален из друзей')
-    loadProfile()
-}
-
-// ========== СООБЩЕНИЯ ==========
-async function loadMessagesPage() {
-    const container = document.getElementById('messagesContainer')
-    if (!container) return
-    
-    // Получаем друзей
-    const { data: friends } = await supabase
-        .from('users')
-        .select('friends')
-        .eq('id', currentUser.id)
-        .single()
-    
-    const friendIds = friends?.friends || []
-    
-    if (friendIds.length === 0) {
-        container.innerHTML = `
-            <div class="chats-list">
-                <div class="chat-item" style="background: #eef2ff; font-weight: bold;">
-                    <div>💬 Сообщения</div>
-                </div>
-                <div class="chat-item">Нет друзей. Добавьте кого-нибудь в друзья!</div>
-            </div>
-            <div class="messages-area">
-                <div class="messages-header">Выберите чат</div>
-                <div class="messages-list"></div>
-            </div>
-        `
-        return
-    }
-    
-    // Загружаем данные друзей
-    const { data: friendsData } = await supabase
-        .from('users')
-        .select('id, full_name, avatar')
-        .in('id', friendIds)
-    
-    const friendsList = friendsData.map(friend => `
-        <div class="chat-item" data-user="${friend.id}" onclick="openChat('${friend.id}')">
-            <div class="chat-avatar">${friend.full_name[0].toUpperCase()}</div>
-            <div class="chat-info">
-                <div class="chat-name">${escapeHtml(friend.full_name)}</div>
-            </div>
-        </div>
-    `).join('')
-    
-    container.innerHTML = `
-        <div class="chats-list">
-            <div class="chat-item" style="background: #eef2ff; font-weight: bold;">
-                <div>💬 Сообщения</div>
-            </div>
-            ${friendsList}
-        </div>
-        <div class="messages-area" id="messagesArea">
-            <div class="messages-header">Выберите чат</div>
-            <div class="messages-list" id="messagesList"></div>
-            <div class="message-input-area" id="messageInputArea" style="display: none;">
-                <input type="text" class="message-input" id="messageInput" placeholder="Напишите сообщение...">
-                <button class="btn btn-primary" id="sendMessageBtn">Отправить</button>
-            </div>
-        </div>
-    `
-}
-
-window.openChat = async function(userId) {
-    currentChatUser = userId
-    
-    const { data: user } = await supabase
-        .from('users')
-        .select('full_name')
-        .eq('id', userId)
-        .single()
-    
-    const messagesHeader = document.querySelector('.messages-header')
-    const messageInputArea = document.getElementById('messageInputArea')
-    const messagesList = document.getElementById('messagesList')
-    
-    if (messagesHeader) messagesHeader.textContent = `Чат с ${user.full_name}`
-    if (messageInputArea) messageInputArea.style.display = 'flex'
-    
-    await loadMessages(userId)
-    
-    const sendBtn = document.getElementById('sendMessageBtn')
-    const messageInput = document.getElementById('messageInput')
-    
-    if (sendBtn) {
-        sendBtn.onclick = () => {
-            const text = messageInput?.value.trim()
-            if (text) {
-                sendMessage(userId, text)
-                if (messageInput) messageInput.value = ''
+        var { data: friendsData } = await dbClient.from('users').select('id, full_name, avatar').in('id', friendIds);
+        if (friendsData && friendsData.length > 0) {
+            friendsHtml = '<div style="margin-top: 20px;"><h3>👥 Друзья</h3><div style="display: flex; flex-wrap: wrap; gap: 12px;">';
+            for (var i = 0; i < friendsData.length; i++) {
+                var f = friendsData[i];
+                var fAvatar = f.avatar 
+                    ? '<img src="' + f.avatar + '" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">'
+                    : '<div style="width: 32px; height: 32px; background: #1e40af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px;">' + f.full_name.charAt(0).toUpperCase() + '</div>';
+                friendsHtml += `
+                    <div onclick="location.href='profile.html?user=${f.id}'" style="display: flex; align-items: center; gap: 8px; background: #f8fafc; padding: 6px 12px; border-radius: 30px; cursor: pointer;">
+                        ${fAvatar}
+                        <span>${escapeHtml(f.full_name)}</span>
+                    </div>
+                `;
             }
+            friendsHtml += '</div></div>';
         }
     }
     
-    if (messageInput) {
-        messageInput.onkeypress = (e) => {
-            if (e.key === 'Enter' && sendBtn) sendBtn.click()
-        }
-    }
-}
-
-async function loadMessages(withUserId) {
-    const { data: messages, error } = await supabase
-        .from('messages')
+    // Проверяем статус отношений
+    var { data: friendRequest } = await dbClient
+        .from('friend_requests')
         .select('*')
-        .or(`and(from_user.eq.${currentUser.id},to_user.eq.${withUserId}),and(from_user.eq.${withUserId},to_user.eq.${currentUser.id})`)
-        .order('created_at', { ascending: true })
+        .or(`and(from_user.eq.${currentUser.id},to_user.eq.${userId}),and(from_user.eq.${userId},to_user.eq.${currentUser.id})`)
+        .single();
     
-    if (error) {
-        console.error('Ошибка загрузки сообщений:', error)
-        return
+    var isFriend = friendRequest?.status === 'accepted';
+    var hasRequest = friendRequest?.status === 'pending' && friendRequest?.to_user === currentUser.id;
+    var requestSent = friendRequest?.status === 'pending' && friendRequest?.from_user === currentUser.id;
+    
+    var avatarHtml = profileUser.avatar 
+        ? '<img src="' + profileUser.avatar + '" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 auto; display: block;">'
+        : '<div style="width: 80px; height: 80px; background: #1e40af; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; font-size: 32px; color: white;">' + (profileUser.full_name ? profileUser.full_name.charAt(0).toUpperCase() : 'U') + '</div>';
+    
+    var bioHtml = profileUser.bio ? '<div style="margin: 10px 0; color: #475569;">' + escapeHtml(profileUser.bio) + '</div>' : '';
+    var cityHtml = profileUser.city ? '<div style="margin: 5px 0; color: #64748b;">📍 ' + escapeHtml(profileUser.city) + '</div>' : '';
+    
+    var buttonHtml = '';
+    if (isFriend) {
+        buttonHtml = '<button class="friend-button" style="background:#10b981;" disabled>✓ В друзьях</button>';
+    } else if (hasRequest) {
+        buttonHtml = '<button class="friend-button" onclick="acceptFriendRequest(\'' + friendRequest.id + '\')">✅ Принять заявку</button>';
+    } else if (requestSent) {
+        buttonHtml = '<button class="friend-button requested" disabled>⏳ Запрос отправлен</button>';
+    } else {
+        buttonHtml = '<button class="friend-button" onclick="sendFriendRequest(\'' + userId + '\')">➕ Добавить в друзья</button>';
     }
     
-    const messagesList = document.getElementById('messagesList')
-    if (!messagesList) return
-    
-    if (messages.length === 0) {
-        messagesList.innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">Нет сообщений. Напишите что-нибудь!</div>'
-        return
-    }
-    
-    messagesList.innerHTML = messages.map(msg => `
-        <div class="message ${msg.from_user === currentUser.id ? 'sent' : 'received'}">
-            <div class="message-bubble">
-                ${escapeHtml(msg.text)}
-                <div class="message-time">${formatTime(msg.created_at)}</div>
+    cont.innerHTML = `
+        <div style="background:white; border-radius:20px; padding:30px; text-align:center; margin-bottom:20px;">
+            ${avatarHtml}
+            <h1 style="margin-top:15px;">${escapeHtml(profileUser.full_name)}</h1>
+            ${bioHtml}
+            ${cityHtml}
+            <div style="color:#64748b;">${profileUser.email}</div>
+            ${buttonHtml}
+            <div style="display:flex; justify-content:center; gap:30px; margin-top:20px;">
+                <div><strong>${count || 0}</strong> постов</div>
+                <div><strong>${friendsCount}</strong> друзей</div>
             </div>
         </div>
-    `).join('')
+    `;
     
-    messagesList.scrollTop = messagesList.scrollHeight
+    if (friendsHtml) {
+        cont.innerHTML += friendsHtml;
+    }
 }
 
-async function sendMessage(toUserId, text) {
-    const { error } = await supabase
-        .from('messages')
+// ========== ОТПРАВКА ЗАПРОСА В ДРУЗЬЯ ==========
+window.sendFriendRequest = async function(userId) {
+    console.log('🔵 Отправка запроса в друзья');
+    
+    var currentUser = JSON.parse(localStorage.getItem('currentUser'));
+    if (!currentUser) {
+        alert('Ошибка: вы не авторизованы');
+        return;
+    }
+    
+    // Проверяем нет ли уже заявки
+    var { data: existing } = await dbClient
+        .from('friend_requests')
+        .select('*')
+        .eq('from_user', currentUser.id)
+        .eq('to_user', userId)
+        .eq('status', 'pending')
+        .single();
+    
+    if (existing) {
+        alert('⚠️ Запрос уже отправлен');
+        return;
+    }
+    
+    // Проверяем не друзья ли уже
+    var { data: areFriends } = await dbClient
+        .from('friend_requests')
+        .select('*')
+        .or(`and(from_user.eq.${currentUser.id},to_user.eq.${userId},status.eq.accepted),and(from_user.eq.${userId},to_user.eq.${currentUser.id},status.eq.accepted)`)
+        .single();
+    
+    if (areFriends) {
+        alert('👥 Вы уже друзья!');
+        return;
+    }
+    
+    // Создаем заявку
+    var { error } = await dbClient
+        .from('friend_requests')
         .insert({
             from_user: currentUser.id,
-            to_user: toUserId,
-            text: text
-        })
+            to_user: userId,
+            status: 'pending'
+        });
     
     if (error) {
-        console.error('Ошибка отправки сообщения:', error)
-        return
+        console.log('❌ Ошибка:', error);
+        alert('Ошибка: ' + error.message);
+    } else {
+        console.log('✅ Запрос отправлен!');
+        alert('✅ Запрос отправлен!');
+        location.reload();
+    }
+};
+
+window.acceptFriendRequest = async function(requestId) {
+    var { error } = await dbClient
+        .from('friend_requests')
+        .update({ status: 'accepted' })
+        .eq('id', requestId);
+    
+    if (error) {
+        alert('Ошибка: ' + error.message);
+    } else {
+        alert('✅ Вы теперь друзья!');
+        location.reload();
+    }
+};
+
+async function loadUserPosts() {
+    var cont = document.getElementById('userPosts');
+    if (!cont) return;
+    var urlParams = new URLSearchParams(window.location.search);
+    var profileUserId = urlParams.get('user') || (getUser() ? getUser().id : null);
+    if (!profileUserId) return;
+    
+    var { data, error } = await dbClient.from('posts').select('*').eq('user_id', profileUserId).order('created_at', { ascending: false });
+    if (error || !data || data.length === 0) {
+        cont.innerHTML = '<div class="card">Нет постов</div>';
+        return;
     }
     
-    await loadMessages(toUserId)
-}
-
-function subscribeToNewMessages() {
-    supabase
-        .channel('messages-channel')
-        .on('postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'messages' },
-            async (payload) => {
-                const newMessage = payload.new
-                if (newMessage.to_user === currentUser.id && currentChatUser === newMessage.from_user) {
-                    await loadMessages(currentChatUser)
-                }
-            }
-        )
-        .subscribe()
-}
-
-// ========== УВЕДОМЛЕНИЯ ==========
-async function addNotification(userId, type, fromUserId, postId = null) {
-    const { data: user } = await supabase
-        .from('users')
-        .select('notifications')
-        .eq('id', userId)
-        .single()
-    
-    const notifications = user.notifications || []
-    
-    notifications.unshift({
-        id: Date.now(),
-        type: type,
-        from: fromUserId,
-        postId: postId,
-        timestamp: new Date().toISOString(),
-        read: false
-    })
-    
-    if (notifications.length > 50) notifications.pop()
-    
-    await supabase
-        .from('users')
-        .update({ notifications: notifications })
-        .eq('id', userId)
-    
-    if (userId === currentUser.id) {
-        updateNotificationsUI()
+    var html = '<h3 style="margin-bottom:15px;">📝 Посты</h3>';
+    for (var i = 0; i < data.length; i++) {
+        var edited = data[i].edited ? '<span style="font-size: 10px; color: #94a3b8;"> (ред.)</span>' : '';
+        html += '<div class="card" style="margin-bottom:12px;"><div>' + escapeHtml(data[i].text || '') + edited + '</div><div style="margin-top:8px; font-size:12px; color:#64748b;">❤️ ' + (data[i].likes ? data[i].likes.length : 0) + ' лайков | 💬 ' + (data[i].comments ? data[i].comments.length : 0) + ' комментариев</div></div>';
     }
+    cont.innerHTML = html;
 }
 
-async function updateNotificationsUI() {
-    const unreadCount = currentUser.notifications?.filter(n => !n.read).length || 0
-    const countElement = document.getElementById('notificationsCount')
-    if (countElement) {
-        countElement.textContent = unreadCount
-        countElement.style.display = unreadCount > 0 ? 'block' : 'none'
+async function createPost() {
+    var user = getUser();
+    if (!user || !user.id) {
+        alert('Ошибка: пользователь не авторизован');
+        return;
     }
     
-    const listElement = document.getElementById('notificationsList')
-    if (listElement) {
-        if (!currentUser.notifications || currentUser.notifications.length === 0) {
-            listElement.innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">Нет уведомлений</div>'
-            return
-        }
-        
-        // Загружаем имена отправителей
-        const fromIds = [...new Set(currentUser.notifications.map(n => n.from))]
-        const { data: users } = await supabase
-            .from('users')
-            .select('id, full_name')
-            .in('id', fromIds)
-        
-        const userMap = {}
-        users?.forEach(u => userMap[u.id] = u)
-        
-        listElement.innerHTML = currentUser.notifications.map(notif => {
-            const fromUser = userMap[notif.from]
-            const userName = fromUser ? fromUser.full_name : 'Пользователь'
-            const time = formatTime(notif.timestamp)
-            
-            let text = ''
-            let icon = ''
-            switch(notif.type) {
-                case 'like':
-                    text = `${userName} поставил(а) лайк вашему посту`
-                    icon = '❤️'
-                    break
-                case 'comment':
-                    text = `${userName} прокомментировал(а) ваш пост`
-                    icon = '💬'
-                    break
-                case 'friend_request':
-                    text = `${userName} отправил(а) запрос в друзья`
-                    icon = '👥'
-                    break
-                default:
-                    text = `${userName} взаимодействовал(а) с вами`
-                    icon = '📢'
-            }
-            
-            return `
-                <div class="notification-item ${!notif.read ? 'unread' : ''}" data-id="${notif.id}">
-                    <div class="notification-icon">${icon}</div>
-                    <div class="notification-content">
-                        <div class="notification-text">${escapeHtml(text)}</div>
-                        <div class="notification-time">${time}</div>
-                    </div>
-                </div>
-            `
-        }).join('')
-        
-        listElement.querySelectorAll('.notification-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const id = parseInt(item.dataset.id)
-                markNotificationAsRead(id)
-            })
-        })
+    var text = document.getElementById('postText')?.value;
+    if (!text) {
+        alert('Напишите что-нибудь');
+        return;
     }
-}
-
-async function markNotificationAsRead(notificationId) {
-    const notifications = currentUser.notifications.map(n => {
-        if (n.id === notificationId) n.read = true
-        return n
-    })
     
-    await supabase
-        .from('users')
-        .update({ notifications: notifications })
-        .eq('id', currentUser.id)
+    var { error: postError } = await dbClient.from('posts').insert({
+        user_id: user.id,
+        text: text,
+        likes: [],
+        comments: [],
+        edited: false
+    });
     
-    currentUser.notifications = notifications
-    updateNotificationsUI()
+    if (postError) {
+        alert('Ошибка при создании поста');
+        return;
+    }
+    
+    var newCount = (user.posts_count || 0) + 1;
+    await dbClient.from('users').update({ posts_count: newCount }).eq('id', user.id);
+    user.posts_count = newCount;
+    localStorage.setItem('currentUser', JSON.stringify(user));
+    
+    document.getElementById('postText').value = '';
+    await loadFeed();
+    alert('Пост опубликован!');
 }
 
 // ========== РЕДАКТИРОВАНИЕ ПРОФИЛЯ ==========
-let tempAvatar = null
-
-function setupEditProfile() {
-    const editForm = document.getElementById('editProfileForm')
-    if (editForm) {
-        editForm.addEventListener('submit', saveProfileChanges)
-    }
+window.openEditModal = function() {
+    var user = getUser();
+    if (!user) return;
     
-    const avatarInput = document.getElementById('avatarInput')
-    if (avatarInput) {
-        avatarInput.addEventListener('change', (e) => {
-            const file = e.target.files[0]
+    var modal = document.getElementById('editProfileModal');
+    if (!modal) {
+        var modalHtml = `
+            <div id="editProfileModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+                <div style="background: white; border-radius: 24px; padding: 24px; width: 90%; max-width: 500px;">
+                    <h3 style="margin-bottom: 20px;">Редактировать профиль</h3>
+                    <img id="editAvatarPreview" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin: 0 auto 15px; display: block;">
+                    <label style="display: block; text-align: center; background: #f1f5f9; padding: 8px; border-radius: 20px; cursor: pointer; margin-bottom: 15px;">
+                        📷 Загрузить фото
+                        <input type="file" id="editAvatarInput" accept="image/*" style="display: none;">
+                    </label>
+                    <div style="margin-bottom: 15px;">
+                        <label>Имя</label>
+                        <input type="text" id="editFullName" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 12px;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label>О себе</label>
+                        <textarea id="editBio" rows="3" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 12px;"></textarea>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label>Город</label>
+                        <input type="text" id="editCity" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 12px;">
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="saveProfileChangesBtn" class="btn btn-primary" style="flex: 1;">Сохранить</button>
+                        <button id="closeEditModalBtn" class="btn btn-secondary" style="flex: 1;">Отмена</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        document.getElementById('closeEditModalBtn').onclick = function() {
+            document.getElementById('editProfileModal').style.display = 'none';
+        };
+        
+        document.getElementById('editAvatarInput').onchange = function(e) {
+            var file = e.target.files[0];
             if (file) {
-                const reader = new FileReader()
-                reader.onload = function(event) {
-                    tempAvatar = event.target.result
-                    const preview = document.getElementById('editAvatarPreview')
-                    if (preview) preview.src = tempAvatar
-                }
-                reader.readAsDataURL(file)
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('editAvatarPreview').src = e.target.result;
+                };
+                reader.readAsDataURL(file);
             }
-        })
-    }
-}
-
-window.openEditProfile = function() {
-    const fullNameInput = document.getElementById('editFullName')
-    const bioInput = document.getElementById('editBio')
-    const cityInput = document.getElementById('editCity')
-    const avatarPreview = document.getElementById('editAvatarPreview')
-    
-    if (fullNameInput) fullNameInput.value = currentUser.full_name || ''
-    if (bioInput) bioInput.value = currentUser.bio || ''
-    if (cityInput) cityInput.value = currentUser.city || ''
-    
-    if (avatarPreview) {
-        if (currentUser.avatar) {
-            avatarPreview.src = currentUser.avatar
-        } else {
-            avatarPreview.src = 'https://via.placeholder.com/100'
-        }
-    }
-    
-    const modal = document.getElementById('editProfileModal')
-    if (modal) modal.style.display = 'flex'
-}
-
-window.closeEditProfile = function() {
-    const modal = document.getElementById('editProfileModal')
-    if (modal) modal.style.display = 'none'
-    tempAvatar = null
-}
-
-async function saveProfileChanges(e) {
-    e.preventDefault()
-    
-    const fullNameInput = document.getElementById('editFullName')
-    const bioInput = document.getElementById('editBio')
-    const cityInput = document.getElementById('editCity')
-    
-    const updates = {
-        full_name: fullNameInput.value,
-        bio: bioInput.value,
-        city: cityInput.value
+        };
+        
+        document.getElementById('saveProfileChangesBtn').onclick = async function() {
+            var user = getUser();
+            var newName = document.getElementById('editFullName').value;
+            var newBio = document.getElementById('editBio').value;
+            var newCity = document.getElementById('editCity').value;
+            var newAvatar = document.getElementById('editAvatarPreview').src;
+            
+            var file = document.getElementById('editAvatarInput').files[0];
+            if (file) {
+                var fileName = user.id + '_' + Date.now();
+                var { data, error } = await dbClient.storage.from('avatars').upload(fileName, file);
+                if (!error) {
+                    var { data: urlData } = dbClient.storage.from('avatars').getPublicUrl(fileName);
+                    newAvatar = urlData.publicUrl;
+                }
+            }
+            
+            await dbClient.from('users').update({
+                full_name: newName,
+                bio: newBio,
+                city: newCity,
+                avatar: newAvatar
+            }).eq('id', user.id);
+            
+            user.full_name = newName;
+            user.bio = newBio;
+            user.city = newCity;
+            user.avatar = newAvatar;
+            localStorage.setItem('currentUser', JSON.stringify(user));
+            
+            document.getElementById('editProfileModal').style.display = 'none';
+            loadProfile();
+        };
     }
     
-    if (tempAvatar) {
-        updates.avatar = tempAvatar
-    }
+    document.getElementById('editFullName').value = user.full_name || '';
+    document.getElementById('editBio').value = user.bio || '';
+    document.getElementById('editCity').value = user.city || '';
+    document.getElementById('editAvatarPreview').src = user.avatar || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect width="100" height="100" fill="%231e40af"/%3E%3Ctext x="50" y="65" font-size="40" text-anchor="middle" fill="white"%3E' + (user.full_name ? user.full_name.charAt(0).toUpperCase() : 'U') + '%3C/text%3E%3C/svg%3E';
     
-    const { error } = await supabase
-        .from('users')
-        .update(updates)
-        .eq('id', currentUser.id)
-    
-    if (error) {
-        console.error('Ошибка сохранения:', error)
-        alert('Ошибка при сохранении')
-        return
-    }
-    
-    // Обновляем текущего пользователя
-    Object.assign(currentUser, updates)
-    if (tempAvatar) currentUser.avatar = tempAvatar
-    localStorage.setItem('currentUser', JSON.stringify(currentUser))
-    
-    closeEditProfile()
-    loadProfile()
-}
+    document.getElementById('editProfileModal').style.display = 'flex';
+};
 
-// ========== РЕАКЦИИ ==========
-window.showReactionPicker = function(event, postId) {
-    const reactions = ['👍', '❤️', '😂', '😮', '😢', '😡']
-    const picker = document.createElement('div')
-    picker.className = 'reactions-picker'
-    picker.innerHTML = reactions.map(emoji => 
-        `<span class="reaction-emoji" data-emoji="${emoji}">${emoji}</span>`
-    ).join('')
-    
-    const rect = event.target.getBoundingClientRect()
-    picker.style.position = 'absolute'
-    picker.style.top = (rect.top - 50) + 'px'
-    picker.style.left = rect.left + 'px'
-    picker.style.background = 'white'
-    picker.style.borderRadius = '30px'
-    picker.style.padding = '8px'
-    picker.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'
-    picker.style.display = 'flex'
-    picker.style.gap = '8px'
-    picker.style.zIndex = '1000'
-    
-    document.body.appendChild(picker)
-    
-    picker.querySelectorAll('.reaction-emoji').forEach(emojiEl => {
-        emojiEl.onclick = async () => {
-            await addReaction(postId, emojiEl.dataset.emoji)
-            picker.remove()
-        }
-    })
-    
-    setTimeout(() => {
-        if (document.body.contains(picker)) picker.remove()
-    }, 5000)
-}
-
-async function addReaction(postId, emoji) {
-    const { data: post } = await supabase
-        .from('posts')
-        .select('reactions')
-        .eq('id', postId)
-        .single()
-    
-    let reactions = post.reactions || {}
-    
-    // Удаляем предыдущую реакцию пользователя
-    for (let e in reactions) {
-        reactions[e] = reactions[e].filter(id => id !== currentUser.id)
-    }
-    
-    // Добавляем новую реакцию
-    if (!reactions[emoji]) reactions[emoji] = []
-    reactions[emoji].push(currentUser.id)
-    
-    await supabase
-        .from('posts')
-        .update({ reactions: reactions })
-        .eq('id', postId)
-    
-    loadFeed()
-}
-
-// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 function formatTime(timestamp) {
-    const date = new Date(timestamp)
-    const now = new Date()
-    const diff = now - date
-    
-    if (diff < 60000) return 'только что'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} мин назад`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} ч назад`
-    if (diff < 604800000) return `${Math.floor(diff / 86400000)} дн назад`
-    return date.toLocaleDateString()
+    var date = new Date(timestamp);
+    var now = new Date();
+    var diff = now - date;
+    if (diff < 60000) return 'только что';
+    if (diff < 3600000) return Math.floor(diff / 60000) + ' мин назад';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + ' ч назад';
+    return date.toLocaleDateString();
 }
 
 function escapeHtml(text) {
-    if (!text) return ''
-    const div = document.createElement('div')
-    div.textContent = text
-    return div.innerHTML
+    if (!text) return '';
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
-window.openImageModal = function(imageSrc) {
-    const modal = document.createElement('div')
-    modal.className = 'modal'
-    modal.style.display = 'flex'
-    modal.innerHTML = `
-        <div class="modal-content" style="max-width: 90%; padding: 0; background: transparent;">
-            <span class="modal-close" style="position: absolute; top: 10px; right: 20px; color: white; font-size: 30px; cursor: pointer;">&times;</span>
-            <img src="${imageSrc}" style="max-width: 100%; max-height: 80vh; border-radius: 12px;">
-        </div>
-    `
-    document.body.appendChild(modal)
+// Открыть фото в полный экран
+window.openImageViewer = function(imageSrc) {
+    var modal = document.createElement('div');
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.width = '100%';
+    modal.style.height = '100%';
+    modal.style.background = 'rgba(0,0,0,0.9)';
+    modal.style.zIndex = '10000';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.cursor = 'pointer';
     
-    modal.querySelector('.modal-close').onclick = () => modal.remove()
-    modal.onclick = (e) => {
-        if (e.target === modal) modal.remove()
-    }
-}
+    var img = document.createElement('img');
+    img.src = imageSrc;
+    img.style.maxWidth = '90%';
+    img.style.maxHeight = '90%';
+    img.style.objectFit = 'contain';
+    img.style.borderRadius = '8px';
+    
+    var closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '✕';
+    closeBtn.style.position = 'absolute';
+    closeBtn.style.top = '20px';
+    closeBtn.style.right = '20px';
+    closeBtn.style.background = 'none';
+    closeBtn.style.border = 'none';
+    closeBtn.style.color = 'white';
+    closeBtn.style.fontSize = '32px';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.style.zIndex = '10001';
+    
+    modal.appendChild(img);
+    modal.appendChild(closeBtn);
+    document.body.appendChild(modal);
+    
+    modal.onclick = function(e) {
+        if (e.target === modal || e.target === closeBtn) {
+            modal.remove();
+        }
+    };
+    
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.body.contains(modal)) {
+            modal.remove();
+        }
+    });
+};

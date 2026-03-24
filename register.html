@@ -1,11 +1,21 @@
-<!-- register.html -->
+<!-- register.html - ИСПРАВЛЕННЫЙ -->
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Регистрация - LinkUp</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="LinkUp">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <meta name="theme-color" content="#1e40af">
+    <link rel="icon" type="image/png" href="/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <meta name="theme-color" content="#1e40af">
 </head>
 <body>
     <div class="container" style="max-width: 400px;">
@@ -37,53 +47,18 @@
             </p>
         </div>
     </div>
-    <script>
-        document.getElementById('registerForm').onsubmit = (e) => {
-            e.preventDefault();
-            const fullName = document.getElementById('fullName').value;
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
-            
-            if (password !== confirmPassword) {
-                showError('Пароли не совпадают');
-                return;
-            }
-            
-            let users = JSON.parse(localStorage.getItem('users') || '{}');
-            
-            if (users[email]) {
-                showError('Пользователь с таким email уже существует');
-                return;
-            }
-            
-            users[email] = {
-                fullName: fullName,
-                email: email,
-                password: password,
-                friends: [],
-                friendRequests: [],
-                postsCount: 0,
-                createdAt: new Date().toISOString()
-            };
-            
-            localStorage.setItem('users', JSON.stringify(users));
-            
-            const successDiv = document.getElementById('successMessage');
-            successDiv.textContent = 'Регистрация успешна! Перенаправляем...';
-            successDiv.style.display = 'block';
-            
-            setTimeout(() => {
-                window.location.href = 'login.html';
-            }, 2000);
-        };
-        
-        function showError(msg) {
-            const errorDiv = document.getElementById('errorMessage');
-            errorDiv.textContent = msg;
-            errorDiv.style.display = 'block';
-            setTimeout(() => errorDiv.style.display = 'none', 3000);
-        }
-    </script>
+    <script src="auth.js"></script>
 </body>
+<script>
+    // Регистрация Service Worker для PWA
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .then(function(reg) {
+                console.log('✅ Service Worker зарегистрирован:', reg);
+            })
+            .catch(function(err) {
+                console.log('❌ Ошибка регистрации Service Worker:', err);
+            });
+    }
+</script>
 </html>

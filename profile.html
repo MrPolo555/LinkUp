@@ -4,27 +4,297 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Профиль - LinkUp</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=3">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="LinkUp">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <meta name="theme-color" content="#1e40af">
+    <link rel="icon" type="image/png" href="/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <meta name="theme-color" content="#1e40af">
+    <style>
+        .edit-profile-btn {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            padding: 8px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: all 0.2s;
+        }
+        .edit-profile-btn:hover {
+            background: #e2e8f0;
+        }
+        .friends-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 15px;
+        }
+        .friend-card {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f8fafc;
+            padding: 8px 12px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .friend-card:hover {
+            background: #eef2ff;
+        }
+        .friend-avatar {
+            width: 32px;
+            height: 32px;
+            background: #1e40af;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .friend-name {
+            font-size: 14px;
+        }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 24px;
+            padding: 24px;
+            width: 90%;
+            max-width: 500px;
+        }
+        .avatar-preview {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin: 0 auto 15px;
+            display: block;
+        }
+        .avatar-upload-btn {
+            display: block;
+            text-align: center;
+            background: #f1f5f9;
+            padding: 8px;
+            border-radius: 20px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+    </style>
 </head>
 <body>
-    <nav class="navbar">
-        <div class="nav-container">
+<nav class="navbar">
+    <div class="nav-container">
+        <div class="nav-left">
             <a href="index.html" class="logo">LinkUp</a>
+            <button id="themeToggle" class="theme-toggle">🌙</button>
+        </div>
+        <div class="nav-right">
+            <button id="logoutBtn" class="logout-icon">🚪</button>
+        </div>
+        <div class="nav-center">
             <div class="nav-links">
                 <a href="index.html">Лента</a>
                 <a href="profile.html">Профиль</a>
                 <a href="messages.html">Сообщения</a>
-                <button id="logoutBtn" class="btn-logout">Выйти</button>
+                <a href="requests.html">Заявки</a>
+                <div class="notifications-badge" id="notificationsBtn">
+                    🔔
+                    <span id="notificationsCount">0</span>
+                    <div id="notificationsDropdown" class="notifications-dropdown">
+                        <div class="notifications-header">Уведомления</div>
+                        <div id="notificationsList"></div>
+                    </div>
+                </div>
             </div>
         </div>
-    </nav>
-
-    <div class="container">
-        <div id="profileContent"></div>
-        <div id="userPosts"></div>
     </div>
+</nav>
 
-    <script src="auth.js"></script>
-    <script src="script.js"></script>
+<div class="container">
+    <div id="profileContent"></div>
+    <div id="userPosts"></div>
+</div>
+
+<!-- Модальное окно редактирования профиля -->
+<div id="editModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3 style="margin-bottom: 20px;">Редактировать профиль</h3>
+        <img id="avatarPreview" class="avatar-preview" src="">
+        <label class="avatar-upload-btn">
+            📷 Загрузить фото
+            <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+        </label>
+        <div style="margin: 15px 0;">
+            <label>Имя</label>
+            <input type="text" id="editName" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 12px;">
+        </div>
+        <div style="margin: 15px 0;">
+            <label>О себе</label>
+            <textarea id="editBio" rows="3" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 12px;"></textarea>
+        </div>
+        <div style="margin: 15px 0;">
+            <label>Город</label>
+            <input type="text" id="editCity" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 12px;">
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button id="saveProfileBtn" class="btn btn-primary" style="flex: 1;">Сохранить</button>
+            <button id="cancelEditBtn" class="btn btn-secondary" style="flex: 1;">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<script src="auth.js?v=3"></script>
+<script src="script.js?v=3"></script>
+<script src="notifications.js?v=3"></script>
+<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+<script>
+    eruda.init();
+    console.log('✅ Eruda консоль готова!');
+</script>
+<script>
+    // ТЕМНАЯ ТЕМА
+    var themeToggle = document.getElementById('themeToggle');
+    var isDark = localStorage.getItem('theme') === 'dark';
+    
+    if (isDark) {
+        document.body.classList.add('dark-theme');
+        if (themeToggle) themeToggle.textContent = '☀️';
+    }
+    
+    if (themeToggle) {
+        themeToggle.onclick = function() {
+            document.body.classList.toggle('dark-theme');
+            var isDarkNow = document.body.classList.contains('dark-theme');
+            localStorage.setItem('theme', isDarkNow ? 'dark' : 'light');
+            themeToggle.textContent = isDarkNow ? '☀️' : '🌙';
+        };
+    }
+    
+    // ВЫХОД
+    var logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.onclick = function() {
+            if (window.supabase) {
+                window.supabase.auth.signOut();
+            }
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        };
+    }
+    
+    // УВЕДОМЛЕНИЯ
+    var notifBtn = document.getElementById('notificationsBtn');
+    var notifDropdown = document.getElementById('notificationsDropdown');
+    
+    if (notifBtn) {
+        notifBtn.onclick = function(e) {
+            e.stopPropagation();
+            if (notifDropdown) {
+                notifDropdown.style.display = notifDropdown.style.display === 'block' ? 'none' : 'block';
+            }
+        };
+        document.onclick = function() {
+            if (notifDropdown) notifDropdown.style.display = 'none';
+        };
+    }
+    
+    // РЕДАКТИРОВАНИЕ ПРОФИЛЯ
+    var editModal = document.getElementById('editModal');
+    var editName = document.getElementById('editName');
+    var editBio = document.getElementById('editBio');
+    var editCity = document.getElementById('editCity');
+    var avatarPreview = document.getElementById('avatarPreview');
+    var avatarInput = document.getElementById('avatarInput');
+    var saveBtn = document.getElementById('saveProfileBtn');
+    var cancelBtn = document.getElementById('cancelEditBtn');
+    
+    window.openEditModal = function() {
+        var user = JSON.parse(localStorage.getItem('currentUser'));
+        editName.value = user.full_name || '';
+        editBio.value = user.bio || '';
+        editCity.value = user.city || '';
+        avatarPreview.src = user.avatar || 'https://via.placeholder.com/100';
+        editModal.style.display = 'flex';
+    };
+    
+    if (cancelBtn) {
+        cancelBtn.onclick = function() {
+            editModal.style.display = 'none';
+        };
+    }
+    
+    if (avatarInput) {
+        avatarInput.onchange = function(e) {
+            var file = e.target.files[0];
+            if (file) {
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    avatarPreview.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+    }
+    
+    if (saveBtn) {
+        saveBtn.onclick = async function() {
+            var user = JSON.parse(localStorage.getItem('currentUser'));
+            var newName = editName.value;
+            var newBio = editBio.value;
+            var newCity = editCity.value;
+            var newAvatar = avatarPreview.src;
+            
+            var supabaseClient = window.supabase.createClient(
+                'https://wydmaatvxutxgvxjknhm.supabase.co',
+                'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5ZG1hYXR2eHV0eGd2eGprbmhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwOTU1MjAsImV4cCI6MjA4OTY3MTUyMH0.ZhybOVp98GTHDZxjDXJF4IruDoip0Npf8AKcsimNeC4'
+            );
+            
+            var file = avatarInput.files[0];
+            if (file) {
+                var fileName = user.id + '_' + Date.now();
+                var { data, error } = await supabaseClient.storage.from('avatars').upload(fileName, file);
+                if (!error) {
+                    var { data: urlData } = supabaseClient.storage.from('avatars').getPublicUrl(fileName);
+                    newAvatar = urlData.publicUrl;
+                }
+            }
+            
+            await supabaseClient.from('users').update({
+                full_name: newName,
+                bio: newBio,
+                city: newCity,
+                avatar: newAvatar
+            }).eq('id', user.id);
+            
+            user.full_name = newName;
+            user.bio = newBio;
+            user.city = newCity;
+            user.avatar = newAvatar;
+            localStorage.setItem('currentUser', JSON.stringify(user));
+            
+            editModal.style.display = 'none';
+            location.reload();
+        };
+    }
+    </script>
 </body>
 </html>

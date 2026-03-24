@@ -1,11 +1,18 @@
-<!-- login.html -->
+<!-- login.html - ИСПРАВЛЕННЫЙ -->
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Вход - LinkUp</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="LinkUp">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <meta name="theme-color" content="#1e40af">
 </head>
 <body>
     <div class="container" style="max-width: 400px;">
@@ -28,25 +35,18 @@
             </p>
         </div>
     </div>
-    <script src="auth.js"></script>
-    <script>
-        document.getElementById('loginForm').onsubmit = (e) => {
-            e.preventDefault();
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            
-            const users = JSON.parse(localStorage.getItem('users') || '{}');
-            const user = users[email];
-            
-            if (user && user.password === password) {
-                localStorage.setItem('currentUser', JSON.stringify(user));
-                window.location.href = 'index.html';
-            } else {
-                const errorDiv = document.getElementById('errorMessage');
-                errorDiv.textContent = 'Неверный email или пароль';
-                errorDiv.style.display = 'block';
-            }
-        };
-    </script>
+    <script src="auth.js?v=3"></script>
 </body>
+<script>
+    // Регистрация Service Worker для PWA
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .then(function(reg) {
+                console.log('✅ Service Worker зарегистрирован:', reg);
+            })
+            .catch(function(err) {
+                console.log('❌ Ошибка регистрации Service Worker:', err);
+            });
+    }
+</script>
 </html>

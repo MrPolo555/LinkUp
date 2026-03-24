@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Заявки - LinkUp</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <link rel="icon" type="image/png" href="/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <meta name="theme-color" content="#1e40af">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-left">
+                <a href="index.html" class="logo">LinkUp</a>
+                <button id="themeToggle" class="theme-toggle">🌙</button>
+            </div>
+            <div class="nav-right">
+                <button id="logoutBtn" class="logout-icon">🚪</button>
+            </div>
+            <div class="nav-center">
+                <div class="nav-links">
+                    <a href="index.html">Лента</a>
+                    <a href="profile.html">Профиль</a>
+                    <a href="messages.html">Сообщения</a>
+                    <a href="requests.html">Заявки</a>
+                    <div class="notifications-badge" id="notificationsBtn">
+                        🔔
+                        <span id="notificationsCount">0</span>
+                        <div id="notificationsDropdown" class="notifications-dropdown">
+                            <div class="notifications-header">Уведомления</div>
+                            <div id="notificationsList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h2 style="margin-bottom: 20px;">📨 Заявки в друзья</h2>
+        <div id="requestsList"></div>
+    </div>
+
+<script src="auth.js?v=3"></script>
+<script src="script.js?v=3"></script>
+<script src="notifications.js?v=3"></script>
+    <script>
+        var supabase = window.supabase.createClient(
+            'https://wydmaatvxutxgvxjknhm.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5ZG1hYXR2eHV0eGd2eGprbmhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwOTU1MjAsImV4cCI6MjA4OTY3MTUyMH0.ZhybOVp98GTHDZxjDXJF4IruDoip0Npf8AKcsimNeC4'
+        );
+        
+        var currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser) window.location.href = 'login.html';
+        
+        async function loadRequests() {
+            var { data: requests, error } = await supabase
+                .from('friend_requests')
+                .select('*, from_user:from_user(id, full_name, avatar), to_user:to_user(id, full_name, avatar)')
+                .eq('to_user', currentUser.id)
+                .eq('status', 'pending');
+            
+            var container = document.getElementById('requestsList');
+            
+            if (error || !requests || requests.length === 0) {
+                container.innerHTML = '<div class="card" style="text-align: center;">Нет заявок</div>';
+                return;
+            }
+            
+            var html = '';
+            for (var i = 0; i < requests.length; i++) {
+                var r = requests[i];
+                var fromUser = r.from_user;
+                var avatarHtml = fromUser.avatar 
+                    ? '<img src="' + fromUser.avatar + '" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover;">'
+                    : '<div style="width: 48px; height: 48px; background: #1e40af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">' + (fromUser.full_name ? fromUser.full_name.charAt(0).toUpperCase() : '?') + '</div>';
+                
+                html += `
+                    <div class="card" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            ${avatarHtml}
+                            <div>
+                                <div style="font-weight: bold;">${escapeHtml(fromUser.full_name)}</div>
+                                <div style="font-size: 12px; color: #64748b;">хочет добавить вас в друзья</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-primary" onclick="acceptRequest('${r.id}')">Принять</button>
+                            <button class="btn btn-secondary" onclick="declineRequest('${r.id}')">Отклонить</button>
+                        </div>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+        
+        window.acceptRequest = async function(requestId) {
+            var { error } = await supabase
+                .from('friend_requests')
+                .update({ status: 'accepted' })
+                .eq('id', requestId);
+            
+            if (error) {
+                alert('Ошибка: ' + error.message);
+            } else {
+                alert('✅ Вы теперь друзья!');
+                loadRequests();
+            }
+        };
+        
+        window.declineRequest = async function(requestId) {
+            var { error } = await supabase
+                .from('friend_requests')
+                .delete()
+                .eq('id', requestId);
+            
+            if (error) {
+                alert('Ошибка: ' + error.message);
+            } else {
+                alert('❌ Заявка отклонена');
+                loadRequests();
+            }
+        };
+        
+        function escapeHtml(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        loadRequests();
+        
+        // Темная тема
+        var themeToggle = document.getElementById('themeToggle');
+        var isDark = localStorage.getItem('theme') === 'dark';
+        if (isDark) {
+            document.body.classList.add('dark-theme');
+            if (themeToggle) themeToggle.textContent = '☀️';
+        }
+        if (themeToggle) {
+            themeToggle.onclick = function() {
+                document.body.classList.toggle('dark-theme');
+                var isDarkNow = document.body.classList.contains('dark-theme');
+                localStorage.setItem('theme', isDarkNow ? 'dark' : 'light');
+                themeToggle.textContent = isDarkNow ? '☀️' : '🌙';
+            };
+        }
+        
+        // Выход
+        var logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.onclick = function() {
+                localStorage.removeItem('currentUser');
+                window.location.href = 'login.html';
+            };
+        }
+        
+        // Уведомления
+        var notifBtn = document.getElementById('notificationsBtn');
+        var notifDropdown = document.getElementById('notificationsDropdown');
+        if (notifBtn) {
+            notifBtn.onclick = function(e) {
+                e.stopPropagation();
+                notifDropdown.classList.toggle('show');
+            };
+            document.onclick = function() { notifDropdown.classList.remove('show'); };
+        }
+    </script>
+</body>
+</html>

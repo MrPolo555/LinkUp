@@ -1,141 +1,124 @@
-// Обработка регистрации
-if (document.getElementById('registerForm')) {
-    const registerForm = document.getElementById('registerForm');
+let authClient = null;
+
+// Ждем загрузки DOM и Supabase
+document.addEventListener('DOMContentLoaded', function() {
+    // Проверяем Supabase каждые 100 мс
+    const checkSupabase = setInterval(function() {
+        if (window.supabase && typeof window.supabase.createClient === 'function') {
+            clearInterval(checkSupabase);
+            authClient = window.supabase.createClient(
+                'https://wydmaatvxutxgvxjknhm.supabase.co',
+                'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5ZG1hYXR2eHV0eGd2eGprbmhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwOTU1MjAsImV4cCI6MjA4OTY3MTUyMH0.ZhybOVp98GTHDZxjDXJF4IruDoip0Npf8AKcsimNeC4'
+            );
+            console.log('✅ Supabase готов');
+            initAuth();
+        }
+    }, 100);
     
-    registerForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        
-        const fullName = document.getElementById('fullName').value.trim();
-        const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
-        const confirmPassword = document.getElementById('confirmPassword').value;
-        
-        // Валидация
-        if (!fullName || !email || !password) {
-            showAuthError('Пожалуйста, заполните все поля');
-            return;
+    // Таймаут через 5 секунд
+    setTimeout(function() {
+        if (!authClient) {
+            console.error('❌ Supabase не загрузился');
         }
-        
-        if (password !== confirmPassword) {
-            showAuthError('Пароли не совпадают');
-            return;
-        }
-        
-        if (password.length < 6) {
-            showAuthError('Пароль должен содержать минимум 6 символов');
-            return;
-        }
-        
-        if (!email.includes('@') || !email.includes('.')) {
-            showAuthError('Введите корректный email адрес');
-            return;
-        }
-        
-        // Получаем существующих пользователей
-        let users = localStorage.getItem('users');
-        users = users ? JSON.parse(users) : {};
-        
-        // Проверяем, не занят ли email
-        if (users[email]) {
-            showAuthError('Пользователь с таким email уже существует');
-            return;
-        }
-        
-        // Создаем нового пользователя
-        users[email] = {
-            fullName: fullName,
-            email: email,
-            password: password,
-            bio: '',
-            city: '',
-            avatar: null,
-            friends: [],
-            friendRequests: [],
-            notifications: [],
-            postsCount: 0,
-            createdAt: new Date().toISOString()
+    }, 5000);
+});
+
+async function initAuth() {
+    // РЕГИСТРАЦИЯ
+    var regForm = document.getElementById('registerForm');
+    if (regForm) {
+        regForm.onsubmit = async function(e) {
+            e.preventDefault();
+            var name = document.getElementById('fullName').value;
+            var email = document.getElementById('email').value;
+            var pass = document.getElementById('password').value;
+            var confirm = document.getElementById('confirmPassword').value;
+            
+            if (pass !== confirm) {
+                alert('Пароли не совпадают');
+                return;
+            }
+            
+            try {
+                var { data, error } = await authClient.auth.signUp({
+                    email: email,
+                    password: pass,
+                    options: { data: { full_name: name } }
+                });
+                
+                if (error) throw error;
+                
+                await authClient.from('users').insert({
+                    id: data.user.id,
+                    email: email,
+                    full_name: name,
+                    bio: '',
+                    city: '',
+                    avatar: '',
+                    posts_count: 0
+                });
+                
+                alert('Регистрация успешна!');
+                window.location.href = 'login.html';
+            } catch (err) {
+                alert('Ошибка: ' + err.message);
+            }
         };
-        
-        localStorage.setItem('users', JSON.stringify(users));
-        
-        // Показываем успех и перенаправляем на вход
-        showAuthSuccess('Регистрация успешна! Перенаправляем на вход...');
-        
-        setTimeout(() => {
-            window.location.href = 'login.html';
-        }, 2000);
-    });
-}
-
-// Обработка входа
-if (document.getElementById('loginForm')) {
-    const loginForm = document.getElementById('loginForm');
-    
-    loginForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        
-        const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
-        
-        if (!email || !password) {
-            showAuthError('Пожалуйста, заполните все поля');
-            return;
-        }
-        
-        // Получаем пользователей
-        let users = localStorage.getItem('users');
-        users = users ? JSON.parse(users) : {};
-        
-        const user = users[email];
-        
-        if (!user || user.password !== password) {
-            showAuthError('Неверный email или пароль');
-            return;
-        }
-        
-        // Сохраняем текущего пользователя
-        localStorage.setItem('currentUser', JSON.stringify(user));
-        
-        // Перенаправляем на профиль
-        window.location.href = 'index.html';
-    });
-}
-
-// Вспомогательные функции для auth страниц
-function showAuthError(message) {
-    const errorDiv = document.getElementById('errorMessage');
-    const successDiv = document.getElementById('successMessage');
-    if (errorDiv) {
-        errorDiv.textContent = message;
-        errorDiv.style.display = 'block';
-        if (successDiv) successDiv.style.display = 'none';
-        
-        setTimeout(() => {
-            errorDiv.style.display = 'none';
-        }, 3000);
     }
-}
-
-function showAuthSuccess(message) {
-    const successDiv = document.getElementById('successMessage');
-    const errorDiv = document.getElementById('errorMessage');
-    if (successDiv) {
-        successDiv.textContent = message;
-        successDiv.style.display = 'block';
-        if (errorDiv) errorDiv.style.display = 'none';
-    }
-}
-
-// Проверка авторизации для всех страниц
-function checkAuth() {
-    const currentUser = localStorage.getItem('currentUser');
-    const publicPages = ['login.html', 'register.html'];
-    const currentPage = window.location.pathname.split('/').pop();
     
-    if (!currentUser && !publicPages.includes(currentPage)) {
+    // ВХОД
+    var logForm = document.getElementById('loginForm');
+    if (logForm) {
+        logForm.onsubmit = async function(e) {
+            e.preventDefault();
+            var email = document.getElementById('email').value;
+            var pass = document.getElementById('password').value;
+            
+            try {
+                var { data, error } = await authClient.auth.signInWithPassword({
+                    email: email,
+                    password: pass
+                });
+                
+                if (error) throw error;
+                
+                var { data: userData } = await authClient
+                    .from('users')
+                    .select('*')
+                    .eq('id', data.user.id)
+                    .single();
+                
+                localStorage.setItem('currentUser', JSON.stringify({
+                    id: data.user.id,
+                    email: data.user.email,
+                    full_name: userData.full_name,
+                    bio: userData.bio || '',
+                    city: userData.city || '',
+                    avatar: userData.avatar || '',
+                    posts_count: userData.posts_count || 0
+                }));
+                
+                window.location.href = 'index.html';
+            } catch (err) {
+                alert('Неверный email или пароль');
+            }
+        };
+    }
+    
+    // ПРОВЕРКА АВТОРИЗАЦИИ
+    var publicPages = ['login.html', 'register.html'];
+    var currentPage = window.location.pathname.split('/').pop();
+    if (!publicPages.includes(currentPage) && !localStorage.getItem('currentUser')) {
         window.location.href = 'login.html';
     }
+    
+    // ВЫХОД
+    var logout = document.getElementById('logoutBtn');
+    if (logout) {
+        logout.onclick = async function() {
+            await authClient.auth.signOut();
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        };
+    }
 }
-
-// Вызываем проверку при загрузке
-checkAuth();
