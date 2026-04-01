@@ -274,10 +274,13 @@ function renderComments(comments, userMap) {
         var c = comments[i];
         var userInfo = userMap[c.user_id] || { full_name: 'Пользователь' };
         html += `
-            <div style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 12px;">
-                <div style="font-weight: bold; font-size: 13px;">${escapeHtml(userInfo.full_name)}</div>
-                <div style="font-size: 14px;">${escapeHtml(c.text)}</div>
-                <div style="font-size: 10px; color: #94a3b8;">${formatTime(c.created_at)}</div>
+            <div class="comment">
+                <div class="comment-avatar">${userInfo.full_name ? userInfo.full_name.charAt(0).toUpperCase() : 'U'}</div>
+                <div class="comment-content">
+                    <div class="comment-user">${escapeHtml(userInfo.full_name)}</div>
+                    <div class="comment-text">${escapeHtml(c.text)}</div>
+                    <div class="comment-time">${formatTime(c.created_at)}</div>
+                </div>
             </div>
         `;
     }
@@ -557,16 +560,16 @@ async function loadProfile() {
         
         var { data: friendsData } = await dbClient.from('users').select('id, full_name, avatar').in('id', friendIds);
         if (friendsData && friendsData.length > 0) {
-            friendsHtml = '<div style="margin-top: 20px;"><h3>👥 Друзья</h3><div style="display: flex; flex-wrap: wrap; gap: 12px;">';
+            friendsHtml = '<div style="margin-top: 20px;"><h3>👥 Друзья</h3><div class="friends-list">';
             for (var i = 0; i < friendsData.length; i++) {
                 var f = friendsData[i];
                 var fAvatar = f.avatar 
-                    ? '<img src="' + f.avatar + '" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">'
-                    : '<div style="width: 32px; height: 32px; background: #1e40af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px;">' + f.full_name.charAt(0).toUpperCase() + '</div>';
+                    ? '<img src="' + f.avatar + '" class="friend-avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">'
+                    : '<div class="friend-avatar" style="width: 32px; height: 32px; background: #1e40af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px;">' + f.full_name.charAt(0).toUpperCase() + '</div>';
                 friendsHtml += `
-                    <div onclick="location.href='profile.html?user=${f.id}'" style="display: flex; align-items: center; gap: 8px; background: #f8fafc; padding: 6px 12px; border-radius: 30px; cursor: pointer;">
+                    <div class="friend-card" onclick="location.href='profile.html?user=${f.id}'">
                         ${fAvatar}
-                        <span>${escapeHtml(f.full_name)}</span>
+                        <span class="friend-name">${escapeHtml(f.full_name)}</span>
                     </div>
                 `;
             }
@@ -641,16 +644,16 @@ async function loadOtherProfile(userId) {
         
         var { data: friendsData } = await dbClient.from('users').select('id, full_name, avatar').in('id', friendIds);
         if (friendsData && friendsData.length > 0) {
-            friendsHtml = '<div style="margin-top: 20px;"><h3>👥 Друзья</h3><div style="display: flex; flex-wrap: wrap; gap: 12px;">';
+            friendsHtml = '<div style="margin-top: 20px;"><h3>👥 Друзья</h3><div class="friends-list">';
             for (var i = 0; i < friendsData.length; i++) {
                 var f = friendsData[i];
                 var fAvatar = f.avatar 
-                    ? '<img src="' + f.avatar + '" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">'
-                    : '<div style="width: 32px; height: 32px; background: #1e40af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px;">' + f.full_name.charAt(0).toUpperCase() + '</div>';
+                    ? '<img src="' + f.avatar + '" class="friend-avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">'
+                    : '<div class="friend-avatar" style="width: 32px; height: 32px; background: #1e40af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px;">' + f.full_name.charAt(0).toUpperCase() + '</div>';
                 friendsHtml += `
-                    <div onclick="location.href='profile.html?user=${f.id}'" style="display: flex; align-items: center; gap: 8px; background: #f8fafc; padding: 6px 12px; border-radius: 30px; cursor: pointer;">
+                    <div class="friend-card" onclick="location.href='profile.html?user=${f.id}'">
                         ${fAvatar}
-                        <span>${escapeHtml(f.full_name)}</span>
+                        <span class="friend-name">${escapeHtml(f.full_name)}</span>
                     </div>
                 `;
             }
@@ -707,7 +710,6 @@ async function loadOtherProfile(userId) {
     }
 }
 
-// ========== ОТПРАВКА ЗАПРОСА В ДРУЗЬЯ ==========
 window.sendFriendRequest = async function(userId) {
     console.log('🔵 Отправка запроса в друзья');
     
@@ -717,7 +719,6 @@ window.sendFriendRequest = async function(userId) {
         return;
     }
     
-    // Проверяем нет ли уже заявки
     var { data: existing } = await dbClient
         .from('friend_requests')
         .select('*')
@@ -731,7 +732,6 @@ window.sendFriendRequest = async function(userId) {
         return;
     }
     
-    // Проверяем не друзья ли уже
     var { data: areFriends } = await dbClient
         .from('friend_requests')
         .select('*')
@@ -743,7 +743,6 @@ window.sendFriendRequest = async function(userId) {
         return;
     }
     
-    // Создаем заявку
     var { error } = await dbClient
         .from('friend_requests')
         .insert({
@@ -805,35 +804,63 @@ async function createPost() {
     }
     
     var text = document.getElementById('postText')?.value;
-    if (!text) {
-        alert('Напишите что-нибудь');
+    var imageFile = document.getElementById('postImage')?.files[0];
+    
+    if (!text && !imageFile) {
+        alert('Напишите что-нибудь или добавьте фото');
         return;
     }
     
-    var { error: postError } = await dbClient.from('posts').insert({
+    var postData = {
         user_id: user.id,
-        text: text,
+        text: text || '',
+        image: '',
         likes: [],
         comments: [],
         edited: false
-    });
+    };
     
-    if (postError) {
-        alert('Ошибка при создании поста');
-        return;
+    if (imageFile) {
+        var reader = new FileReader();
+        reader.onload = async function(e) {
+            postData.image = e.target.result;
+            var { error: postError } = await dbClient.from('posts').insert(postData);
+            
+            if (postError) {
+                alert('Ошибка при создании поста: ' + postError.message);
+                return;
+            }
+            
+            var newCount = (user.posts_count || 0) + 1;
+            await dbClient.from('users').update({ posts_count: newCount }).eq('id', user.id);
+            user.posts_count = newCount;
+            localStorage.setItem('currentUser', JSON.stringify(user));
+            
+            document.getElementById('postText').value = '';
+            document.getElementById('postImage').value = '';
+            await loadFeed();
+            alert('Пост опубликован!');
+        };
+        reader.readAsDataURL(imageFile);
+    } else {
+        var { error: postError } = await dbClient.from('posts').insert(postData);
+        
+        if (postError) {
+            alert('Ошибка при создании поста: ' + postError.message);
+            return;
+        }
+        
+        var newCount = (user.posts_count || 0) + 1;
+        await dbClient.from('users').update({ posts_count: newCount }).eq('id', user.id);
+        user.posts_count = newCount;
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        
+        document.getElementById('postText').value = '';
+        await loadFeed();
+        alert('Пост опубликован!');
     }
-    
-    var newCount = (user.posts_count || 0) + 1;
-    await dbClient.from('users').update({ posts_count: newCount }).eq('id', user.id);
-    user.posts_count = newCount;
-    localStorage.setItem('currentUser', JSON.stringify(user));
-    
-    document.getElementById('postText').value = '';
-    await loadFeed();
-    alert('Пост опубликован!');
 }
 
-// ========== РЕДАКТИРОВАНИЕ ПРОФИЛЯ ==========
 window.openEditModal = function() {
     var user = getUser();
     if (!user) return;
@@ -945,7 +972,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Открыть фото в полный экран
 window.openImageViewer = function(imageSrc) {
     var modal = document.createElement('div');
     modal.style.position = 'fixed';
