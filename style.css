@@ -1363,3 +1363,22 @@ body.dark-theme #postText {
 body.dark-theme #postText::placeholder {
     color: #64748b !important;
 }
+
+/* ========== КНОПКА ДОБАВИТЬ ФОТО В ТЕМНОЙ ТЕМЕ ========== */
+body.dark-theme .add-photo-btn,
+body.dark-theme .photo-upload-btn,
+body.dark-theme .file-upload-btn {
+    background: #334155 !important;
+    border: 1px solid #475569 !important;
+    color: #e2e8f0 !important;
+}
+
+body.dark-theme .add-photo-btn:hover,
+body.dark-theme .photo-upload-btn:hover,
+body.dark-theme .file-upload-btn:hover {
+    background: #475569 !important;
+}
+
+body.dark-theme .file-name {
+    color: #94a3b8 !important;
+}
