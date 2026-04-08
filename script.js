@@ -194,6 +194,48 @@ function attachEventHandlers() {
             }
         };
     }
+
+    // Меню комментариев (три точки)
+    var commentMenuBtns = document.querySelectorAll('.comment-menu-btn');
+    for (var i = 0; i < commentMenuBtns.length; i++) {
+        commentMenuBtns[i].onclick = function(e) {
+            e.stopPropagation();
+            var commentId = this.getAttribute('data-comment-id');
+            var dropdown = document.querySelector('.comment-menu-dropdown-' + commentId);
+            if (dropdown) {
+                dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+            }
+        };
+    }
+
+    // Редактирование комментария
+    var editCommentBtns = document.querySelectorAll('.edit-comment-btn');
+    for (var i = 0; i < editCommentBtns.length; i++) {
+        editCommentBtns[i].onclick = function(e) {
+            e.stopPropagation();
+            var commentId = this.getAttribute('data-comment-id');
+            var postId = this.getAttribute('data-post-id');
+            var oldText = this.getAttribute('data-text');
+            window.editComment(commentId, postId, oldText);
+            
+            var dropdown = document.querySelector('.comment-menu-dropdown-' + commentId);
+            if (dropdown) dropdown.style.display = 'none';
+        };
+    }
+
+    // Удаление комментария
+    var deleteCommentBtns = document.querySelectorAll('.delete-comment-btn');
+    for (var i = 0; i < deleteCommentBtns.length; i++) {
+        deleteCommentBtns[i].onclick = function(e) {
+            e.stopPropagation();
+            var commentId = this.getAttribute('data-comment-id');
+            var postId = this.getAttribute('data-post-id');
+            window.deleteComment(commentId, postId);
+            
+            var dropdown = document.querySelector('.comment-menu-dropdown-' + commentId);
+            if (dropdown) dropdown.style.display = 'none';
+        };
+    }
     
     var submitBtns = document.querySelectorAll('.comment-submit-btn');
     for (var i = 0; i < submitBtns.length; i++) {
@@ -269,15 +311,38 @@ function renderComments(comments, userMap) {
     if (!comments || comments.length === 0) {
         return '<div style="color: #94a3b8; font-size: 13px; text-align: center;">Нет комментариев</div>';
     }
+    var currentUser = getUser();
     var html = '';
     for (var i = 0; i < comments.length; i++) {
         var c = comments[i];
-        var userInfo = userMap[c.user_id] || { full_name: 'Пользователь' };
+        var userInfo = userMap[c.user_id] || { full_name: 'Пользователь', avatar: null };
+        var isOwn = currentUser && c.user_id === currentUser.id;
+        
+        var avatarHtml = userInfo.avatar 
+            ? '<img src="' + userInfo.avatar + '" class="comment-avatar-img" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">'
+            : '<div class="comment-avatar" style="width: 32px; height: 32px; background: #1e40af; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;">' + (userInfo.full_name ? userInfo.full_name.charAt(0).toUpperCase() : 'U') + '</div>';
+        
+        var menuHtml = '';
+        if (isOwn) {
+            menuHtml = `
+                <div style="position: relative;">
+                    <button class="comment-menu-btn" data-comment-id="${c.id}" data-post-id="${c.post_id}" style="background: none; border: none; cursor: pointer; font-size: 14px; color: #64748b; padding: 2px 6px;">⋮</button>
+                    <div class="comment-menu-dropdown-${c.id}" style="display: none; position: absolute; right: 0; top: 20px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 100; min-width: 100px; overflow: hidden;">
+                        <button class="edit-comment-btn" data-comment-id="${c.id}" data-post-id="${c.post_id}" data-text="${escapeHtml(c.text)}" style="width: 100%; padding: 6px 12px; text-align: left; background: none; border: none; cursor: pointer; transition: background 0.2s;">✏️ Редактировать</button>
+                        <button class="delete-comment-btn" data-comment-id="${c.id}" data-post-id="${c.post_id}" style="width: 100%; padding: 6px 12px; text-align: left; background: none; border: none; cursor: pointer; color: #ef4444; transition: background 0.2s;">🗑️ Удалить</button>
+                    </div>
+                </div>
+            `;
+        }
+        
         html += `
-            <div class="comment">
-                <div class="comment-avatar">${userInfo.full_name ? userInfo.full_name.charAt(0).toUpperCase() : 'U'}</div>
-                <div class="comment-content">
-                    <div class="comment-user">${escapeHtml(userInfo.full_name)}</div>
+            <div class="comment" data-comment-id="${c.id}" data-post-id="${c.post_id}">
+                ${avatarHtml}
+                <div class="comment-content" style="flex: 1;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div class="comment-user">${escapeHtml(userInfo.full_name)}</div>
+                        ${menuHtml}
+                    </div>
                     <div class="comment-text">${escapeHtml(c.text)}</div>
                     <div class="comment-time">${formatTime(c.created_at)}</div>
                 </div>
@@ -338,6 +403,7 @@ async function addComment(postId, text) {
     comments.push({
         id: Date.now(),
         user_id: user.id,
+        post_id: postId,
         text: text,
         created_at: new Date().toISOString()
     });
@@ -540,7 +606,6 @@ async function loadProfile() {
     
     var { count } = await dbClient.from('posts').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
     
-    // Получаем количество друзей из таблицы friend_requests
     var { data: acceptedFriends } = await dbClient
         .from('friend_requests')
         .select('*')
@@ -548,7 +613,6 @@ async function loadProfile() {
     
     var friendsCount = acceptedFriends?.length || 0;
     
-    // Получаем данные друзей для отображения
     var friendsHtml = '';
     if (acceptedFriends && acceptedFriends.length > 0) {
         var friendIds = [];
@@ -613,10 +677,18 @@ async function loadProfile() {
     if (editBtn) editBtn.onclick = function() { openEditModal(); };
 }
 
+// ========== ИСПРАВЛЕННАЯ ФУНКЦИЯ loadOtherProfile ==========
 async function loadOtherProfile(userId) {
     var cont = document.getElementById('profileContent');
     if (!cont) return;
     var currentUser = getUser();
+    
+    // ПРОВЕРКА: если это свой профиль — загружаем обычный профиль
+    if (currentUser.id === userId) {
+        loadProfile();
+        return;
+    }
+    
     var { data: profileUser, error } = await dbClient.from('users').select('*').eq('id', userId).single();
     if (error || !profileUser) {
         cont.innerHTML = '<div style="background:white; border-radius:20px; padding:30px; text-align:center;">Пользователь не найден</div>';
@@ -691,16 +763,22 @@ async function loadOtherProfile(userId) {
     }
     
     cont.innerHTML = `
-        <div style="background:white; border-radius:20px; padding:30px; text-align:center; margin-bottom:20px;">
+        <div class="profile-header" style="background:white; border-radius:20px; padding:30px; text-align:center; margin-bottom:20px;">
             ${avatarHtml}
-            <h1 style="margin-top:15px;">${escapeHtml(profileUser.full_name)}</h1>
+            <h1 class="profile-name" style="margin-top:15px;">${escapeHtml(profileUser.full_name)}</h1>
             ${bioHtml}
             ${cityHtml}
-            <div style="color:#64748b;">${profileUser.email}</div>
+            <div class="profile-email" style="color:#64748b;">${profileUser.email}</div>
             ${buttonHtml}
-            <div style="display:flex; justify-content:center; gap:30px; margin-top:20px;">
-                <div><strong>${count || 0}</strong> постов</div>
-                <div><strong>${friendsCount}</strong> друзей</div>
+            <div class="profile-stats" style="display:flex; justify-content:center; gap:30px; margin-top:20px;">
+                <div class="stat">
+                    <div class="stat-number" style="font-size:24px; font-weight:bold; color:#1e40af;">${count || 0}</div>
+                    <div class="stat-label" style="font-size:12px; color:#64748b;">постов</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" style="font-size:24px; font-weight:bold; color:#1e40af;">${friendsCount}</div>
+                    <div class="stat-label" style="font-size:12px; color:#64748b;">друзей</div>
+                </div>
             </div>
         </div>
     `;
@@ -708,6 +786,48 @@ async function loadOtherProfile(userId) {
     if (friendsHtml) {
         cont.innerHTML += friendsHtml;
     }
+}
+
+// ========== ИСПРАВЛЕННАЯ ФУНКЦИЯ loadUserPosts (с фото) ==========
+async function loadUserPosts() {
+    var cont = document.getElementById('userPosts');
+    if (!cont) return;
+    var urlParams = new URLSearchParams(window.location.search);
+    var profileUserId = urlParams.get('user') || (getUser() ? getUser().id : null);
+    if (!profileUserId) return;
+    
+    var { data, error } = await dbClient.from('posts').select('*').eq('user_id', profileUserId).order('created_at', { ascending: false });
+    if (error || !data || data.length === 0) {
+        cont.innerHTML = '<div class="card">Нет постов</div>';
+        return;
+    }
+    
+    var html = '<h3 style="margin-bottom:15px;">📝 Посты</h3>';
+    for (var i = 0; i < data.length; i++) {
+        var post = data[i];
+        var edited = post.edited ? '<span style="font-size: 10px; color: #94a3b8;"> (ред.)</span>' : '';
+        
+        // ФОТО: проверяем что image существует и не пустая строка
+        var imageHtml = '';
+        if (post.image && post.image !== '' && post.image !== 'null' && post.image !== 'undefined') {
+            imageHtml = '<div style="margin-top: 10px;"><img src="' + post.image + '" onclick="openImageViewer(\'' + post.image + '\')" style="max-width: 100%; max-height: 300px; border-radius: 12px; cursor: pointer; object-fit: contain; border: 1px solid #e2e8f0;"></div>';
+            console.log('Фото найдено для поста', post.id);
+        } else {
+            console.log('Нет фото для поста', post.id);
+        }
+        
+        html += `
+            <div class="card" style="margin-bottom:12px;">
+                <div>${escapeHtml(post.text || '')}${edited}</div>
+                ${imageHtml}
+                <div style="margin-top:8px; font-size:12px; color:#64748b;">
+                    ❤️ ${post.likes ? post.likes.length : 0} лайков | 
+                    💬 ${post.comments ? post.comments.length : 0} комментариев
+                </div>
+            </div>
+        `;
+    }
+    cont.innerHTML = html;
 }
 
 window.sendFriendRequest = async function(userId) {
@@ -774,27 +894,6 @@ window.acceptFriendRequest = async function(requestId) {
         location.reload();
     }
 };
-
-async function loadUserPosts() {
-    var cont = document.getElementById('userPosts');
-    if (!cont) return;
-    var urlParams = new URLSearchParams(window.location.search);
-    var profileUserId = urlParams.get('user') || (getUser() ? getUser().id : null);
-    if (!profileUserId) return;
-    
-    var { data, error } = await dbClient.from('posts').select('*').eq('user_id', profileUserId).order('created_at', { ascending: false });
-    if (error || !data || data.length === 0) {
-        cont.innerHTML = '<div class="card">Нет постов</div>';
-        return;
-    }
-    
-    var html = '<h3 style="margin-bottom:15px;">📝 Посты</h3>';
-    for (var i = 0; i < data.length; i++) {
-        var edited = data[i].edited ? '<span style="font-size: 10px; color: #94a3b8;"> (ред.)</span>' : '';
-        html += '<div class="card" style="margin-bottom:12px;"><div>' + escapeHtml(data[i].text || '') + edited + '</div><div style="margin-top:8px; font-size:12px; color:#64748b;">❤️ ' + (data[i].likes ? data[i].likes.length : 0) + ' лайков | 💬 ' + (data[i].comments ? data[i].comments.length : 0) + ' комментариев</div></div>';
-    }
-    cont.innerHTML = html;
-}
 
 async function createPost() {
     var user = getUser();
@@ -882,7 +981,7 @@ window.openEditModal = function() {
                     </div>
                     <div style="margin-bottom: 15px;">
                         <label>О себе</label>
-                        <textarea id="editBio" rows="3" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 12px;"></textarea>
+                        <textarea id="editBio" rows="3" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 12px;">
                     </div>
                     <div style="margin-bottom: 15px;">
                         <label>Город</label>
@@ -953,6 +1052,84 @@ window.openEditModal = function() {
     document.getElementById('editAvatarPreview').src = user.avatar || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect width="100" height="100" fill="%231e40af"/%3E%3Ctext x="50" y="65" font-size="40" text-anchor="middle" fill="white"%3E' + (user.full_name ? user.full_name.charAt(0).toUpperCase() : 'U') + '%3C/text%3E%3C/svg%3E';
     
     document.getElementById('editProfileModal').style.display = 'flex';
+};
+
+window.editComment = async function(commentId, postId, oldText) {
+    console.log('editComment вызвана', { commentId, postId });
+    
+    var newText = prompt('Редактировать комментарий:', oldText);
+    if (newText === null || newText.trim() === '') return;
+    
+    var { data: post } = await dbClient.from('posts').select('comments').eq('id', postId).single();
+    if (!post) {
+        alert('Пост не найден');
+        return;
+    }
+    
+    var comments = post.comments || [];
+    var updatedComments = comments.map(function(c) {
+        if (c.id == commentId) {
+            c.text = newText.trim();
+            c.edited = true;
+        }
+        return c;
+    });
+    
+    var { error } = await dbClient.from('posts').update({ comments: updatedComments }).eq('id', postId);
+    
+    if (error) {
+        alert('Ошибка при редактировании: ' + error.message);
+        return;
+    }
+    
+    var commentElement = document.querySelector('.comment[data-comment-id="' + commentId + '"]');
+    if (commentElement) {
+        var textDiv = commentElement.querySelector('.comment-text');
+        if (textDiv) textDiv.innerHTML = escapeHtml(newText.trim());
+        
+        var userDiv = commentElement.querySelector('.comment-user');
+        if (userDiv && !userDiv.innerHTML.includes('(ред.)')) {
+            userDiv.innerHTML += ' <span style="font-size: 10px; color: #94a3b8;">(ред.)</span>';
+        }
+    }
+    
+    alert('✅ Комментарий отредактирован');
+};
+
+window.deleteComment = async function(commentId, postId) {
+    console.log('deleteComment вызвана', { commentId, postId });
+    
+    if (!confirm('Удалить комментарий? Это действие нельзя отменить.')) return;
+    
+    var { data: post } = await dbClient.from('posts').select('comments').eq('id', postId).single();
+    if (!post) {
+        alert('Пост не найден');
+        return;
+    }
+    
+    var comments = post.comments || [];
+    var updatedComments = comments.filter(function(c) {
+        return c.id != commentId;
+    });
+    
+    var { error } = await dbClient.from('posts').update({ comments: updatedComments }).eq('id', postId);
+    
+    if (error) {
+        alert('Ошибка при удалении: ' + error.message);
+        return;
+    }
+    
+    var commentElement = document.querySelector('.comment[data-comment-id="' + commentId + '"]');
+    if (commentElement) {
+        commentElement.remove();
+    }
+    
+    var commentCountSpan = document.querySelector('.comment-count-' + postId);
+    if (commentCountSpan) {
+        commentCountSpan.textContent = updatedComments.length;
+    }
+    
+    alert('✅ Комментарий удален');
 };
 
 function formatTime(timestamp) {

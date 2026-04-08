@@ -24,14 +24,9 @@
                 <div class="nav-links">
                     <a href="index.html">Лента</a>
                     <a href="profile.html">Профиль</a>
-                    <a href="messages.html">Сообщения</a>
-                    <a href="requests.html">Заявки</a>
-                    <div class="notifications-badge" id="notificationsBtn">
-                        🔔
-                        <span id="notificationsCount">0</span>
-                        <div id="notificationsDropdown" class="notifications-dropdown">
-                            <div class="notifications-header">Уведомления</div>
-                            <div id="notificationsList"></div>
+                    <a href="messages.html" id="messagesLink">Сообщения <span id="messagesBadge" class="badge" style="display:none;">+1</span></a>
+<a href="requests.html" id="requestsLink">Заявки <span id="requestsBadge" class="badge" style="display:none;">+1</span></a>
+                    <a href="groups.html">Группы</a>
                         </div>
                     </div>
                 </div>
@@ -169,5 +164,31 @@
             document.onclick = function() { notifDropdown.classList.remove('show'); };
         }
     </script>
+    <footer class="footer">
+    <div class="footer-container">
+        <div class="footer-col">
+            <h4>LinkUp</h4>
+            <p>Социальная сеть для общения и обмена мыслями.</p>
+    </div>
+    <div class="footer-col">
+        <h4>Navigation</h4>
+        <ul>
+            <li> <a href="index.html">Лента</a></li>
+            <li> <a href="profile.html">Профиль</a></li>
+            <li> <a href="messages.html">Сообщения</a></li>
+        </ul>
+    </div>
+    <div class="footer-col">
+            <h4>Контакты</h4>
+            <ul>
+                <li>Email: support@linkup.com</li>
+                <li>Telegram: @linkup</li>
+            </ul>
+        </div>
+    </div>
+    <div class="footer-bottom">
+        <p>&copy; 2025 LinkUp. Все права защищены.</p>
+    </div>
+</footer>
 </body>
 </html>

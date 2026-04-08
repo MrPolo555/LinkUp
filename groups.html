@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Группы - LinkUp</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-left">
+                <a href="index.html" class="logo">LinkUp</a>
+                <button id="themeToggle" class="theme-toggle">🌙</button>
+            </div>
+            <div class="nav-right">
+                <button id="logoutBtn" class="logout-icon">🚪</button>
+            </div>
+            <div class="nav-center">
+                <div class="nav-links">
+                    <a href="index.html">Лента</a>
+                    <a href="profile.html">Профиль</a>
+                    <a href="messages.html">Сообщения <span id="messagesBadge" class="badge" style="display:none;"></span></a>
+                    <a href="requests.html">Заявки <span id="requestsBadge" class="badge" style="display:none;"></span></a>
+                    <a href="groups.html">Группы</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+            <h2 style="margin: 0;">📁 Мои группы</h2>
+            <button id="createGroupBtn" class="btn btn-primary">➕ Создать группу</button>
+        </div>
+        
+        <div id="groupsList" class="groups-list">
+            <div class="card" style="text-align: center;">Загрузка...</div>
+        </div>
+    </div>
+
+    <!-- Модальное окно создания группы -->
+    <div id="createGroupModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3 style="margin-bottom: 20px;">Создать новую группу</h3>
+            <div class="form-group">
+                <label>Название группы</label>
+                <input type="text" id="groupName" placeholder="Например: IT Клуб" style="width: 100%; padding: 10px; border-radius: 12px; border: 1px solid #cbd5e1;">
+            </div>
+            <div class="form-group">
+                <label>Описание</label>
+                <textarea id="groupDesc" rows="3" placeholder="О чем эта группа?" style="width: 100%; padding: 10px; border-radius: 12px; border: 1px solid #cbd5e1;"></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button id="saveGroupBtn" class="btn btn-primary" style="flex: 1;">Создать</button>
+                <button id="cancelGroupBtn" class="btn btn-secondary" style="flex: 1;">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="auth.js"></script>
+    <script src="notifications.js"></script>
+    <script src="groups.js"></script>
+    <script>
+        // Темная тема
+        var themeToggle = document.getElementById('themeToggle');
+        var isDark = localStorage.getItem('theme') === 'dark';
+        if (isDark) {
+            document.body.classList.add('dark-theme');
+            if (themeToggle) themeToggle.textContent = '☀️';
+        }
+        if (themeToggle) {
+            themeToggle.onclick = function() {
+                document.body.classList.toggle('dark-theme');
+                var isDarkNow = document.body.classList.contains('dark-theme');
+                localStorage.setItem('theme', isDarkNow ? 'dark' : 'light');
+                themeToggle.textContent = isDarkNow ? '☀️' : '🌙';
+            };
+        }
+        
+        // Выход
+        var logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.onclick = function() {
+                localStorage.removeItem('currentUser');
+                window.location.href = 'login.html';
+            };
+        }
+    </script>
+</body>
+</html>

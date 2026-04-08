@@ -1382,3 +1382,161 @@ body.dark-theme .file-upload-btn:hover {
 body.dark-theme .file-name {
     color: #94a3b8 !important;
 }
+
+/* ========== FOOTER ========== */
+.footer {
+    background: #1e293b;
+    color: #94a3b8;
+    padding: 40px 20px 20px;
+    margin-top: 40px;
+    border-top: 1px solid #334155;
+}
+
+.footer-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 30px;
+}
+
+.footer-col h4 {
+    color: white;
+    margin-bottom: 15px;
+    font-size: 16px;
+}
+
+.footer-col ul {
+    list-style: none;
+    padding: 0;
+}
+
+.footer-col ul li {
+    margin-bottom: 8px;
+}
+
+.footer-col ul li a {
+    color: #94a3b8;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.footer-col ul li a:hover {
+    color: white;
+}
+
+.footer-bottom {
+    text-align: center;
+    padding-top: 20px;
+    margin-top: 20px;
+    border-top: 1px solid #334155;
+    font-size: 12px;
+}
+
+/* Темная тема для футера (если body.dark-theme) */
+body.dark-theme .footer {
+    background: #0f172a;
+    border-top-color: #1e293b;
+}
+
+/* ========== АВАТАРКИ В КОММЕНТАРИЯХ ========== */
+.comment-avatar,
+.comment-avatar-img {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50% !important;
+    flex-shrink: 0 !important;
+}
+
+.comment-avatar {
+    background: #1e40af;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+/* Темная тема */
+body.dark-theme .comment-avatar {
+    background: #2563eb;
+}
+
+/* Меню комментариев в темной теме */
+body.dark-theme .comment-menu-dropdown {
+    background: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+body.dark-theme .edit-comment-btn,
+body.dark-theme .delete-comment-btn {
+    color: #e2e8f0 !important;
+}
+
+body.dark-theme .edit-comment-btn:hover,
+body.dark-theme .delete-comment-btn:hover {
+    background: #334155 !important;
+}
+
+body.dark-theme .delete-comment-btn {
+    color: #ef4444 !important;
+}
+
+/* ========== ПРИНУДИТЕЛЬНЫЕ СТИЛИ ДЛЯ ПРОФИЛЯ В ТЕМНОЙ ТЕМЕ ========== */
+
+body.dark-theme #profileContent > div:first-child,
+body.dark-theme .profile-header,
+body.dark-theme div[class*="profile-header"] {
+    background: #1e293b !important;
+    border: 1px solid #334155 !important;
+    color: #e2e8f0 !important;
+}
+
+body.dark-theme #profileContent h1,
+body.dark-theme .profile-header h1,
+body.dark-theme .profile-name {
+    color: #e2e8f0 !important;
+}
+
+body.dark-theme #profileContent .profile-email,
+body.dark-theme .profile-header .profile-email {
+    color: #94a3b8 !important;
+}
+
+body.dark-theme #profileContent .stat-number,
+body.dark-theme .profile-header .stat-number {
+    color: #60a5fa !important;
+}
+
+body.dark-theme #profileContent .stat-label,
+body.dark-theme .profile-header .stat-label {
+    color: #94a3b8 !important;
+}
+
+body.dark-theme #profileContent .friend-button,
+body.dark-theme .profile-header .friend-button {
+    background: #2563eb !important;
+    color: white !important;
+}
+
+body.dark-theme #profileContent .friend-button.requested,
+body.dark-theme .profile-header .friend-button.requested {
+    background: #64748b !important;
+}
+
+/* Бейджики для уведомлений */
+.badge {
+    background: #ef4444;
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: 5px;
+    display: inline-block;
+}
+
+body.dark-theme .badge {
+    background: #dc2626;
+}
